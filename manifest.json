@@ -1,0 +1,52 @@
+{
+  "manifest_version": 3,
+  "name": "清大校務與OAuth驗證碼自動填入 (NTHU Captcha AutoFill)",
+  "version": "1.1.0",
+  "description": "精準自動辨識並填入清華大學校務資訊系統 (CCXP) 及 eeclass / eLearn OAuth 登入驗證碼。純本機離線神經網路，零額外連線，靜默自動填入。",
+  "icons": {
+    "16": "icons/icon-16.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon-16.png",
+      "48": "icons/icon-48.png",
+      "128": "icons/icon-128.png"
+    }
+  },
+  "permissions": [
+    "storage"
+  ],
+  "host_permissions": [
+    "*://www.ccxp.nthu.edu.tw/*",
+    "*://ccxp.nthu.edu.tw/*",
+    "*://oauth.ccxp.nthu.edu.tw/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": [
+        "*://www.ccxp.nthu.edu.tw/ccxp/INQUIRE/*",
+        "*://ccxp.nthu.edu.tw/ccxp/INQUIRE/*"
+      ],
+      "js": [
+        "decaptcha.model.js",
+        "decaptcha.js",
+        "content.js"
+      ],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "*://oauth.ccxp.nthu.edu.tw/*"
+      ],
+      "js": [
+        "oauth.decaptcha.model.js",
+        "oauth.decaptcha.js",
+        "oauth.content.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ]
+}

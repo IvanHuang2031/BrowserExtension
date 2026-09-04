@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>清大驗證碼自動填入</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    body {
+      width: 320px;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      background-color: #f8fafc;
+      color: #1e293b;
+      padding: 16px;
+      user-select: none;
+    }
+    .header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 14px;
+      padding-bottom: 12px;
+      border-bottom: 1px solid #e2e8f0;
+    }
+    .logo-badge {
+      width: 34px;
+      height: 34px;
+      background: linear-gradient(135deg, #7c246c, #9d3189);
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      font-weight: bold;
+      box-shadow: 0 2px 4px rgba(124, 36, 108, 0.25);
+    }
+    .title-area h1 {
+      font-size: 13.5px;
+      font-weight: 700;
+      color: #0f172a;
+    }
+    .title-area p {
+      font-size: 11px;
+      color: #64748b;
+      margin-top: 1px;
+    }
+    .card {
+      background: white;
+      border: 1px solid #e2e8f0;
+      border-radius: 10px;
+      padding: 12px 14px;
+      margin-bottom: 12px;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.03);
+    }
+    .toggle-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .toggle-label {
+      font-size: 13px;
+      font-weight: 600;
+      color: #334155;
+    }
+    .switch {
+      position: relative;
+      display: inline-block;
+      width: 44px;
+      height: 24px;
+    }
+    .switch input {
+      opacity: 0;
+      width: 0;
+      height: 0;
+    }
+    .slider {
+      position: absolute;
+      cursor: pointer;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background-color: #cbd5e1;
+      transition: .25s cubic-bezier(0.4, 0, 0.2, 1);
+      border-radius: 24px;
+    }
+    .slider:before {
+      position: absolute;
+      content: "";
+      height: 18px;
+      width: 18px;
+      left: 3px;
+      bottom: 3px;
+      background-color: white;
+      transition: .25s cubic-bezier(0.4, 0, 0.2, 1);
+      border-radius: 50%;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.15);
+    }
+    input:checked + .slider {
+      background-color: #7c246c;
+    }
+    input:checked + .slider:before {
+      transform: translateX(20px);
+    }
+    .stats-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-top: 10px;
+      padding-top: 10px;
+      border-top: 1px dashed #f1f5f9;
+      font-size: 12px;
+      color: #64748b;
+    }
+    .stats-badge {
+      font-weight: 700;
+      color: #7c246c;
+      background: #fdf2f8;
+      padding: 1px 8px;
+      border-radius: 10px;
+    }
+    .features {
+      font-size: 11.5px;
+      color: #475569;
+      line-height: 1.5;
+    }
+    .feature-item {
+      display: flex;
+      gap: 6px;
+      margin-bottom: 6px;
+    }
+    .feature-item:last-child {
+      margin-bottom: 0;
+    }
+    .feature-icon {
+      color: #10b981;
+      font-size: 12px;
+      flex-shrink: 0;
+    }
+    .footer {
+      text-align: center;
+      font-size: 10.5px;
+      color: #94a3b8;
+      margin-top: 12px;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div class="logo-badge">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
+      </svg>
+    </div>
+    <div class="title-area">
+      <h1>清大驗證碼自動填入</h1>
+      <p>CCXP 校務系統 & eeclass 登入</p>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="toggle-row">
+      <span class="toggle-label">自動填入驗證碼</span>
+      <label class="switch">
+        <input type="checkbox" id="autoFillToggle" checked>
+        <span class="slider"></span>
+      </label>
+    </div>
+    <div class="stats-row">
+      <span>已累計自動填入</span>
+      <span class="stats-badge" id="statsCount">0 次</span>
+    </div>
+  </div>
+
+  <div class="card features">
+    <div class="feature-item">
+      <span class="feature-icon">✔</span>
+      <div><b>雙平台支援</b>：完美支援校務資訊系統（6位數）與 eeclass / eLearn OAuth（4位數）。</div>
+    </div>
+    <div class="feature-item">
+      <span class="feature-icon">✔</span>
+      <div><b>無脫節保證</b>：直接自畫面擷取已繪製影像，絕不發送二次請求，杜絕驗證碼失效。</div>
+    </div>
+    <div class="feature-item">
+      <span class="feature-icon">✔</span>
+      <div><b>極速本機離線</b>：純本機神經網路，3ms 內完成推論，靜默填入無干擾。</div>
+    </div>
+  </div>
+
+  <div class="footer">
+    專為國立清華大學各項登入系統打造
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
