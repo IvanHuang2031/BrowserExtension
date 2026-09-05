@@ -1,4 +1,4 @@
-# 清大校務與 OAuth 驗證碼自動填入 (NTHU Captcha Auto-Fill)
+# BrowserExtension - 清大校務與 OAuth 驗證碼自動填入
 
 專為**國立清華大學校務資訊系統 (CCXP / AIS)** 與 **OAuth 認證系統 (eeclass / eLearn)** 設計的純本機高速驗證碼辨識與自動填入工具。
 
@@ -47,7 +47,7 @@
 
 ### 步驟 3：一鍵安裝腳本
 1. 在 iPhone 上使用 Safari 打開本專案的腳本安裝連結：
-   👉 **[點此安裝 nthu-captcha.user.js](https://raw.githubusercontent.com/IvanHuang2031/nthu-captcha-autofill/main/nthu-captcha.user.js)**
+   👉 **[點此安裝 nthu-captcha.user.js](https://raw.githubusercontent.com/IvanHuang2031/BrowserExtension/main/nthu-captcha.user.js)**
 2. Safari 畫面會提示是否安裝 Userscript，點擊 **「Install (安裝)」** 即可！
 3. 安裝完成！打開 iPhone Safari 的 [eeclass 登入頁](https://oauth.ccxp.nthu.edu.tw/) 或校務資訊系統，就會像電腦一樣秒速自動填入驗證碼了！
 
@@ -63,6 +63,6 @@
 - 在頁面右上角（Edge 在左側選單），開啟 **「開發人員模式 (Developer mode)」**。
 
 ### 步驟 3：載入套件
-1. 從 [Releases 頁面](https://github.com/IvanHuang2031/nthu-captcha-autofill/releases) 下載 `nthu_captcha_extension.zip` 並解壓縮。
-2. 點擊左上角 **「載入未封裝項目 (Load unpacked)」**，選取解壓縮出來的資料夾。
+1. 從 [Releases 頁面](https://github.com/IvanHuang2031/BrowserExtension/releases) 下載 `BrowserExtension.zip` 並解壓縮。
+2. 點擊左上角 **「載入未封裝項目 (Load unpacked)」**，選取解壓縮出來的資料夾 `BrowserExtension`。
 3. 安裝完成！打開網頁即可享受自動填入。

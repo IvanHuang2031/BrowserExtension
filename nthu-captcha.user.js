@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         清大校務與eeclass驗證碼自動填入 (NTHU Captcha AutoFill)
-// @namespace    https://github.com/IvanHuang2031/nthu-captcha-autofill
+// @namespace    https://github.com/IvanHuang2031/BrowserExtension
 // @version      1.1.0
 // @description  自動辨識並填入清華大學校務資訊系統 (CCXP) 與 eeclass / eLearn OAuth 登入驗證碼。支援電腦版 Chrome/Edge/Firefox 與 iPhone Safari (透過 Userscripts / Stay App)。
 // @author       Ivan Huang
