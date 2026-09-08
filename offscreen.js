@@ -315,6 +315,7 @@ class UniversalOcrEngine {
   }
 }
 
+const EXTENSION_VERSION = '1.2.4';
 const engine = new UniversalOcrEngine();
 
 // Message listener for OCR classification requests
@@ -324,7 +325,12 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   }
 
   if (request.type === 'PING') {
-    sendResponse({ success: true, ready: true, modelReady: !!engine.session });
+    sendResponse({
+      success: true,
+      ready: true,
+      modelReady: !!engine.session,
+      version: EXTENSION_VERSION
+    });
     return false;
   }
 
@@ -332,7 +338,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     (async () => {
       try {
         await engine.init();
-        sendResponse({ success: true, ready: true });
+        sendResponse({ success: true, ready: true, version: EXTENSION_VERSION });
       } catch (err) {
         sendResponse({ success: false, error: err.message || String(err) });
       }
@@ -355,10 +361,10 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         });
 
         const text = await engine.classify(img);
-        console.log('[Universal-OCR Offscreen] Recognized text:', text);
-        sendResponse({ success: true, text });
+        console.log(`[Universal-OCR Offscreen v${EXTENSION_VERSION}] Recognized text:`, text);
+        sendResponse({ success: true, text, version: EXTENSION_VERSION });
       } catch (err) {
-        console.error('[Universal-OCR Offscreen] Classification error:', err);
+        console.error(`[Universal-OCR Offscreen v${EXTENSION_VERSION}] Classification error:`, err);
         sendResponse({ success: false, error: err.message || String(err) });
       }
     })();
@@ -371,7 +377,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
 // Announce offscreen ready and pre-warm model
 try {
-  chrome.runtime.sendMessage({ type: 'OFFSCREEN_READY' });
+  chrome.runtime.sendMessage({ type: 'OFFSCREEN_READY', version: EXTENSION_VERSION });
   engine.init().catch((err) => {
     console.warn('[Universal-OCR Offscreen] Initial pre-warm deferred:', err);
   });

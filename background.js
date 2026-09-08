@@ -5,13 +5,31 @@
 
 'use strict';
 
+const CURRENT_VERSION = '1.2.4';
 let creatingOffscreenPromise = null;
 let isOffscreenReady = false;
 
-async function setupOffscreenDocument(path = 'offscreen.html') {
+async function setupOffscreenDocument(forceReload = false, path = 'offscreen.html') {
   try {
-    if (await chrome.offscreen.hasDocument()) {
-      return;
+    const hasDoc = await chrome.offscreen.hasDocument();
+    if (hasDoc) {
+      if (forceReload) {
+        console.log('[Universal-OCR Background] Force reloading offscreen document...');
+        await chrome.offscreen.closeDocument();
+      } else {
+        // Ping existing offscreen document to ensure it's alive and running the latest version
+        try {
+          const pingRes = await chrome.runtime.sendMessage({ target: 'offscreen', type: 'PING' });
+          if (pingRes && pingRes.version === CURRENT_VERSION) {
+            return; // Document is healthy and on current version
+          }
+          console.log(`[Universal-OCR Background] Offscreen version mismatch (${pingRes?.version} vs ${CURRENT_VERSION}), recreating...`);
+          await chrome.offscreen.closeDocument();
+        } catch (pingErr) {
+          console.warn('[Universal-OCR Background] Offscreen ping failed, recreating:', pingErr);
+          await chrome.offscreen.closeDocument();
+        }
+      }
     }
 
     if (creatingOffscreenPromise) {
@@ -26,8 +44,9 @@ async function setupOffscreenDocument(path = 'offscreen.html') {
     });
 
     await creatingOffscreenPromise;
+    console.log(`[Universal-OCR Background] Offscreen document created successfully (v${CURRENT_VERSION}).`);
   } catch (err) {
-    console.warn('[Universal-OCR Background] createDocument warning/error:', err);
+    console.warn('[Universal-OCR Background] setupOffscreenDocument error:', err);
   } finally {
     creatingOffscreenPromise = null;
   }
@@ -67,20 +86,20 @@ function arrayBufferToBase64DataUrl(buffer, mimeType = 'image/png') {
   return `data:${mimeType};base64,${btoa(binary)}`;
 }
 
-// Pre-warm offscreen document on extension lifecycle events
+// Always force-recreate offscreen document on extension lifecycle events to bust cached JS
 chrome.runtime.onInstalled.addListener(() => {
-  setupOffscreenDocument().then(() => {
+  setupOffscreenDocument(true).then(() => {
     sendToOffscreenWithRetry({ target: 'offscreen', type: 'WARMUP' }).catch(() => {});
   });
 });
 
 chrome.runtime.onStartup.addListener(() => {
-  setupOffscreenDocument().then(() => {
+  setupOffscreenDocument(true).then(() => {
     sendToOffscreenWithRetry({ target: 'offscreen', type: 'WARMUP' }).catch(() => {});
   });
 });
 
-// Immediate pre-warm attempt
+// Immediate initialization attempt
 setupOffscreenDocument().catch(() => {});
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
@@ -92,8 +111,18 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   // Handshake notification from offscreen.js
   if (request.type === 'OFFSCREEN_READY') {
     isOffscreenReady = true;
-    console.log('[Universal-OCR Background] Offscreen document reported READY.');
+    console.log(`[Universal-OCR Background] Offscreen document reported READY (v${request.version || 'unknown'}).`);
     return false;
+  }
+
+  // Force restart offscreen document from popup UI
+  if (request.action === 'RESTART_OFFSCREEN') {
+    setupOffscreenDocument(true).then(() => {
+      sendResponse({ success: true, message: `OCR 核心已重啟 (v${CURRENT_VERSION})` });
+    }).catch((err) => {
+      sendResponse({ success: false, error: err.message || String(err) });
+    });
+    return true;
   }
 
   if (request.action === 'RECOGNIZE_CAPTCHA') {

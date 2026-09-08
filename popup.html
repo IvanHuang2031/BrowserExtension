@@ -198,8 +198,8 @@
       </svg>
     </div>
     <div class="title-area">
-      <h1>驗證碼自動填入 v1.2</h1>
-      <p>清大專用 + 全網通用自適應</p>
+      <h1>驗證碼自動填入</h1>
+      <p id="versionTag">核心版本 v1.2.4 (純本機離線)</p>
     </div>
   </div>
 
@@ -231,6 +231,14 @@
         <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
       </svg>
       強制辨識當前頁面驗證碼
+    </button>
+    <button class="action-btn" id="restartOcrBtn" style="margin-top: 8px; background: #f1f5f9; color: #334155; border: 1px solid #cbd5e1;">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="23 4 23 10 17 10"></polyline>
+        <polyline points="1 20 1 14 7 14"></polyline>
+        <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+      </svg>
+      重新載入 OCR 引擎核心
     </button>
     <div class="status-msg" id="statusMessage"></div>
   </div>

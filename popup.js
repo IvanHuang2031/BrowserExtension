@@ -27,6 +27,30 @@ document.addEventListener('DOMContentLoaded', async () => {
       chrome.storage.local.set({ universalEnabled: universalToggle.checked });
     });
 
+    // Display current extension version
+    const versionTag = document.getElementById('versionTag');
+    if (versionTag && typeof chrome !== 'undefined' && chrome.runtime?.getManifest) {
+      const ver = chrome.runtime.getManifest().version;
+      versionTag.textContent = `核心版本 v${ver} (純本機離線)`;
+    }
+
+    const restartBtn = document.getElementById('restartOcrBtn');
+    if (restartBtn) {
+      restartBtn.addEventListener('click', () => {
+        statusMsg.textContent = '正在重新載入 OCR 引擎...';
+        statusMsg.style.color = '#3b82f6';
+        chrome.runtime.sendMessage({ action: 'RESTART_OFFSCREEN' }, (res) => {
+          if (res && res.success) {
+            statusMsg.textContent = '✅ ' + (res.message || 'OCR 核心已重啟');
+            statusMsg.style.color = '#059669';
+          } else {
+            statusMsg.textContent = '重啟失敗：' + (res?.error || chrome.runtime.lastError?.message || '未知錯誤');
+            statusMsg.style.color = '#ef4444';
+          }
+        });
+      });
+    }
+
     forceBtn.addEventListener('click', async () => {
       statusMsg.textContent = '正在掃描頁面並辨識...';
       statusMsg.style.color = '#3b82f6';

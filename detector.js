@@ -12,9 +12,12 @@
     return;
   }
 
+  const DETECTOR_VERSION = '1.2.4';
   const processedInputs = new WeakSet();
   const processedImages = new WeakSet();
   let isScanning = false;
+
+  console.log(`[Universal-OCR] Content script active (v${DETECTOR_VERSION}) on ${window.location.hostname}`);
 
   // Regex patterns
   const CAPTCHA_KEYWORD_REGEX = /(captcha|checkcode|authcode|valcode|vcode|verify|validate|code_img|securimage|yzm|驗證碼|验证码)/i;
@@ -301,6 +304,7 @@
 
               setNativeInputValue(input, text);
               input.dataset.lastOcrSig = sig;
+              input.dataset.ocrVersion = DETECTOR_VERSION;
               processedInputs.add(input);
               processedImages.add(img);
               recordAutoFillSuccess();
