@@ -230,26 +230,57 @@
     return pairs;
   }
 
-  function recognizeAndFillPair(pair) {
+  function getImageSignature(raster) {
+    if (raster.base64) {
+      const b = raster.base64;
+      return `${b.length}_${b.slice(30, 60)}_${b.slice(-30)}`;
+    }
+    return raster.url || '';
+  }
+
+  function setNativeInputValue(input, text) {
+    const valueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set;
+    if (valueSetter) {
+      valueSetter.call(input, text);
+    } else {
+      input.value = text;
+    }
+    input.dispatchEvent(new Event('input', { bubbles: true, cancelable: true }));
+    input.dispatchEvent(new Event('change', { bubbles: true, cancelable: true }));
+    input.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true, cancelable: true, key: text.slice(-1) }));
+  }
+
+  function recordAutoFillSuccess() {
+    if (typeof chrome !== 'undefined' && chrome.storage?.local) {
+      chrome.storage.local.get({ totalAutoFilled: 0 }, (data) => {
+        chrome.storage.local.set({ totalAutoFilled: (data.totalAutoFilled || 0) + 1 });
+      });
+    }
+  }
+
+  function recognizeAndFillPair(pair, force = false) {
     return new Promise((resolve) => {
       const { input, img } = pair;
-      if (processedInputs.has(input) && input.value.trim().length >= 4) {
-        return resolve(false);
-      }
 
       const raster = extractImageRaster(img);
       if (!raster || (!raster.base64 && !raster.url)) {
         // If image not loaded yet, listen for load
         if (img.tagName === 'IMG' && !img.complete) {
           img.addEventListener('load', () => {
-            recognizeAndFillPair(pair).then(resolve);
+            recognizeAndFillPair(pair, force).then(resolve);
           }, { once: true });
           return;
         }
         return resolve(false);
       }
 
-      console.log('[Universal-OCR] Requesting recognition for captcha image:', img.id || img.className || img.src?.substring(0, 40));
+      const sig = getImageSignature(raster);
+      if (!force && input.dataset.lastOcrSig === sig && input.value.trim().length >= 3) {
+        // Already processed and filled for this exact image
+        return resolve(false);
+      }
+
+      console.log('[Universal-OCR] Requesting recognition for captcha:', img.id || img.className || img.src?.substring(0, 40));
 
       chrome.runtime.sendMessage(
         {
@@ -266,15 +297,13 @@
           if (response && response.success && response.text) {
             const text = response.text.trim();
             if (text.length >= 2) {
-              console.log('[Universal-OCR] Filling input with recognized text:', text);
+              console.log('[Universal-OCR] Successfully recognized:', text, '-> filling into:', input.id || input.name || 'input');
 
-              input.value = text;
-              input.dispatchEvent(new Event('input', { bubbles: true }));
-              input.dispatchEvent(new Event('change', { bubbles: true }));
-              input.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true }));
-
+              setNativeInputValue(input, text);
+              input.dataset.lastOcrSig = sig;
               processedInputs.add(input);
               processedImages.add(img);
+              recordAutoFillSuccess();
 
               // Add visual hint and click-to-refresh binding on captcha image
               img.style.cursor = 'pointer';
@@ -285,15 +314,16 @@
               if (!img.__universal_refresh_bound) {
                 img.__universal_refresh_bound = true;
                 img.addEventListener('click', () => {
+                  delete input.dataset.lastOcrSig;
                   processedInputs.delete(input);
-                  setTimeout(() => recognizeAndFillPair(pair), 500);
+                  setTimeout(() => recognizeAndFillPair(pair, true), 500);
                 });
               }
 
               return resolve(true);
             }
           }
-          
+
           console.warn('[Universal-OCR] Recognition produced no valid text:', response);
           return resolve(false);
         }
@@ -330,20 +360,23 @@
     scanAndProcess();
 
     // Multi-stage check for delayed dynamic captchas (e.g. BotDetect, ASP.NET, SPAs)
-    setTimeout(scanAndProcess, 500);
-    setTimeout(scanAndProcess, 1200);
-    setTimeout(scanAndProcess, 2500);
+    setTimeout(scanAndProcess, 300);
+    setTimeout(scanAndProcess, 700);
+    setTimeout(scanAndProcess, 1500);
+    setTimeout(scanAndProcess, 3000);
 
-    // Debounced MutationObserver for dynamic SPAs and popups
+    // Debounced MutationObserver watching childList AND attributes for dynamic SPAs and popups
     let debounceTimer = null;
     const observer = new MutationObserver(() => {
       clearTimeout(debounceTimer);
-      debounceTimer = setTimeout(scanAndProcess, 600);
+      debounceTimer = setTimeout(scanAndProcess, 400);
     });
 
     observer.observe(document.documentElement, {
       childList: true,
-      subtree: true
+      subtree: true,
+      attributes: true,
+      attributeFilter: ['class', 'src', 'style', 'hidden']
     });
   }
 
@@ -365,25 +398,27 @@
           const pairs = pairCandidates(inputs, images);
           let filledCount = 0;
           for (const pair of pairs) {
+            delete pair.input.dataset.lastOcrSig;
             processedInputs.delete(pair.input);
-            const filled = await recognizeAndFillPair(pair);
+            const filled = await recognizeAndFillPair(pair, true);
             if (filled) filledCount++;
           }
 
           if (filledCount > 0) {
             sendResponse({ success: true, count: filledCount });
           } else {
-            sendResponse({ success: false, message: '未識別出清晰文字或辨識未成功' });
+            sendResponse({ success: false, message: '未能辨識出清晰文字，請點擊驗證碼刷新後重試' });
           }
         } else {
           // Broad fallback: any active or text input + visible image
           const activeInput = (document.activeElement && document.activeElement.tagName === 'INPUT') ?
             document.activeElement : document.querySelector('input[type="text"]:not([name="q"])');
           const candidateImg = document.querySelector('img[src*="captcha"], img[src*="code"], img[src*="image"], canvas');
-          
+
           if (activeInput && candidateImg) {
+            delete activeInput.dataset.lastOcrSig;
             processedInputs.delete(activeInput);
-            const filled = await recognizeAndFillPair({ input: activeInput, img: candidateImg });
+            const filled = await recognizeAndFillPair({ input: activeInput, img: candidateImg }, true);
             if (filled) {
               sendResponse({ success: true, count: 1 });
             } else {

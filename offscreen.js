@@ -90,13 +90,19 @@ class UniversalOcrEngine {
     if (this.initPromise) return this.initPromise;
 
     this.initPromise = (async () => {
-      const modelUrl = chrome.runtime.getURL('models/common_q8.onnx');
-      console.log('[Universal-OCR] Loading ONNX model from:', modelUrl);
-      this.session = await ort.InferenceSession.create(modelUrl, {
-        executionProviders: ['wasm']
-      });
-      console.log('[Universal-OCR] Model loaded successfully. Input names:', this.session.inputNames);
-      return this.session;
+      try {
+        const modelUrl = chrome.runtime.getURL('models/common_q8.onnx');
+        console.log('[Universal-OCR Offscreen] Loading ONNX model from:', modelUrl);
+        this.session = await ort.InferenceSession.create(modelUrl, {
+          executionProviders: ['wasm']
+        });
+        console.log('[Universal-OCR Offscreen] Model loaded successfully. Input names:', this.session.inputNames);
+        return this.session;
+      } catch (err) {
+        console.error('[Universal-OCR Offscreen] Model init failed:', err);
+        this.initPromise = null;
+        throw err;
+      }
     })();
 
     return this.initPromise;
@@ -233,31 +239,60 @@ const engine = new UniversalOcrEngine();
 
 // Message listener for OCR classification requests
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-  if (request.target !== 'offscreen' && request.type !== 'OCR_CLASSIFY') {
+  if (request.target !== 'offscreen') {
     return false;
   }
 
-  (async () => {
-    try {
-      if (!request.imageBase64) {
-        throw new Error('No image data provided.');
+  if (request.type === 'PING') {
+    sendResponse({ success: true, ready: true, modelReady: !!engine.session });
+    return false;
+  }
+
+  if (request.type === 'WARMUP') {
+    (async () => {
+      try {
+        await engine.init();
+        sendResponse({ success: true, ready: true });
+      } catch (err) {
+        sendResponse({ success: false, error: err.message || String(err) });
       }
+    })();
+    return true;
+  }
 
-      const img = new Image();
-      await new Promise((resolve, reject) => {
-        img.onload = resolve;
-        img.onerror = () => reject(new Error('Failed to load image into DOM.'));
-        img.src = request.imageBase64;
-      });
+  if (request.type === 'OCR_CLASSIFY') {
+    (async () => {
+      try {
+        if (!request.imageBase64) {
+          throw new Error('No image data provided.');
+        }
 
-      const text = await engine.classify(img);
-      console.log('[Universal-OCR] Recognized text:', text);
-      sendResponse({ success: true, text });
-    } catch (err) {
-      console.error('[Universal-OCR] Classification error:', err);
-      sendResponse({ success: false, error: err.message || String(err) });
-    }
-  })();
+        const img = new Image();
+        await new Promise((resolve, reject) => {
+          img.onload = resolve;
+          img.onerror = () => reject(new Error('Failed to load image into DOM.'));
+          img.src = request.imageBase64;
+        });
 
-  return true; // Keep message channel open for async response
+        const text = await engine.classify(img);
+        console.log('[Universal-OCR Offscreen] Recognized text:', text);
+        sendResponse({ success: true, text });
+      } catch (err) {
+        console.error('[Universal-OCR Offscreen] Classification error:', err);
+        sendResponse({ success: false, error: err.message || String(err) });
+      }
+    })();
+
+    return true; // Keep message channel open for async response
+  }
+
+  return false;
 });
+
+// Announce offscreen ready and pre-warm model
+try {
+  chrome.runtime.sendMessage({ type: 'OFFSCREEN_READY' });
+  engine.init().catch((err) => {
+    console.warn('[Universal-OCR Offscreen] Initial pre-warm deferred:', err);
+  });
+} catch (e) {}

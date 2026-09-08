@@ -1,7 +1,10 @@
 {
   "manifest_version": 3,
   "name": "清大校務與全網通用驗證碼自動填入 (NTHU & Universal Captcha AutoFill)",
-  "version": "1.2.1",
+  "version": "1.2.2",
+  "content_security_policy": {
+    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'"
+  },
   "description": "精準自動辨識並填入清華大學校務系統(CCXP)、OAuth，以及支援全網常見英數字登入驗證碼。純本機離線神經網路，零額外連線，靜默自動填入。",
   "icons": {
     "16": "icons/icon-16.png",

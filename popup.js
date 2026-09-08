@@ -41,7 +41,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         chrome.tabs.sendMessage(tab.id, { action: 'FORCE_RECOGNIZE_ACTIVE_TAB' }, (res) => {
           if (chrome.runtime.lastError) {
-            statusMsg.textContent = '無法與該分頁連線（可能非標準網頁）';
+            statusMsg.textContent = '無法連線至該分頁（若剛更新擴充功能，請先重新整理 F5 該網頁）';
             statusMsg.style.color = '#ef4444';
             return;
           }
@@ -49,6 +49,9 @@ document.addEventListener('DOMContentLoaded', async () => {
           if (res && res.success) {
             statusMsg.textContent = `辨識成功，已填入 ${res.count || 1} 處驗證碼！`;
             statusMsg.style.color = '#059669';
+            chrome.storage.local.get({ totalAutoFilled: 0 }, (d) => {
+              statsCount.textContent = `${d.totalAutoFilled || 0} 次`;
+            });
           } else {
             statusMsg.textContent = res?.message || '未在頁面上找到符合條件的驗證碼';
             statusMsg.style.color = '#eab308';
