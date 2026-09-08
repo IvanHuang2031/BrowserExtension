@@ -120,69 +120,149 @@ class UniversalOcrEngine {
     canvas.width = targetWidth;
     canvas.height = targetHeight;
 
+    // Fill white background to handle transparent PNGs
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, targetWidth, targetHeight);
     ctx.drawImage(img, 0, 0, targetWidth, targetHeight);
+
     const imageData = ctx.getImageData(0, 0, targetWidth, targetHeight);
     const data = imageData.data;
-    const inputData = new Float32Array(targetWidth * targetHeight);
+    const rawGray = new Float32Array(targetWidth * targetHeight);
 
     for (let i = 0; i < data.length; i += 4) {
       const r = data[i];
       const g = data[i + 1];
       const b = data[i + 2];
-      const grayscale = 0.299 * r + 0.587 * g + 0.114 * b;
-      inputData[i / 4] = grayscale / 255.0;
+      rawGray[i / 4] = (0.299 * r + 0.587 * g + 0.114 * b) / 255.0;
+    }
+
+    // Apply horizontal morphological dilation (min-filter in [0, 1] dark space)
+    // This reinforces thin vertical/diagonal character strokes and separates touching ligatures
+    const inputData = new Float32Array(targetWidth * targetHeight);
+    for (let y = 0; y < targetHeight; y++) {
+      const rowOffset = y * targetWidth;
+      for (let x = 0; x < targetWidth; x++) {
+        let m = rawGray[rowOffset + x];
+        if (x > 0 && rawGray[rowOffset + x - 1] < m) m = rawGray[rowOffset + x - 1];
+        if (x < targetWidth - 1 && rawGray[rowOffset + x + 1] < m) m = rawGray[rowOffset + x + 1];
+        inputData[rowOffset + x] = m;
+      }
     }
 
     return new ort.Tensor('float32', inputData, [1, 1, targetHeight, targetWidth]);
   }
 
-  decodeBeamSearch(outputTensor, beamWidth = 3) {
-    const outputData = outputTensor.data;
-    const sequenceLength = outputTensor.dims[0];
-    const numClasses = outputTensor.dims[2];
+  decodeBeamSearch(outputTensor, beamWidth = 20) {
+    const [T, B, C] = outputTensor.dims;
+    const logits = outputTensor.data;
 
-    let paths = [{ text: '', score: 0, prev: -1 }];
+    // Convert raw logits to numerically stable log-softmax probabilities
+    const logProbs = new Float32Array(T * C);
+    for (let t = 0; t < T; t++) {
+      const offset = t * C;
+      let maxVal = -Infinity;
+      for (let c = 0; c < C; c++) {
+        const v = logits[offset + c];
+        if (v > maxVal) maxVal = v;
+      }
+      let sumExp = 0.0;
+      for (let c = 0; c < C; c++) {
+        sumExp += Math.exp(logits[offset + c] - maxVal);
+      }
+      const logSumExp = maxVal + Math.log(sumExp);
+      for (let c = 0; c < C; c++) {
+        logProbs[offset + c] = logits[offset + c] - logSumExp;
+      }
+    }
 
-    for (let t = 0; t < sequenceLength; t++) {
-      const nextPaths = [];
-      const offset = t * numClasses;
+    function logSumExp2(a, b) {
+      if (a === -Infinity) return b;
+      if (b === -Infinity) return a;
+      return Math.max(a, b) + Math.log(1.0 + Math.exp(-Math.abs(a - b)));
+    }
 
-      for (const path of paths) {
-        // Collect top candidates for current timestep
-        const candidates = [];
-        for (let j = 0; j < numClasses; j++) {
-          const prob = outputData[offset + j];
-          if (candidates.length < beamWidth) {
-            candidates.push({ prob, index: j });
-            candidates.sort((a, b) => b.prob - a.prob);
-          } else if (prob > candidates[candidates.length - 1].prob) {
-            candidates[candidates.length - 1] = { prob, index: j };
-            candidates.sort((a, b) => b.prob - a.prob);
+    // Standard CTC Prefix Beam Search
+    let beams = new Map();
+    beams.set('', { pBlank: 0.0, pNonBlank: -Infinity });
+
+    for (let t = 0; t < T; t++) {
+      const offset = t * C;
+      const nextBeams = new Map();
+
+      // Top candidate tokens for this timestep
+      const candidates = [];
+      for (let c = 0; c < C; c++) {
+        candidates.push({ c, lp: logProbs[offset + c] });
+      }
+      candidates.sort((a, b) => b.lp - a.lp);
+      const topCand = candidates.slice(0, 15);
+
+      for (const [prefix, p] of beams) {
+        for (const { c, lp } of topCand) {
+          if (c === 0) {
+            // Blank token: keeps prefix the same
+            let entry = nextBeams.get(prefix);
+            if (!entry) {
+              entry = { pBlank: -Infinity, pNonBlank: -Infinity };
+              nextBeams.set(prefix, entry);
+            }
+            const totalP = logSumExp2(p.pBlank, p.pNonBlank);
+            entry.pBlank = logSumExp2(entry.pBlank, totalP + lp);
+          } else {
+            const char = CHARSET[c] || '';
+            if (!char) continue;
+            const lastChar = prefix.slice(-1);
+
+            if (char === lastChar) {
+              // Repeated character
+              // 1. If previous path ended with blank, this character appends to prefix
+              const newPrefix = prefix + char;
+              let newEntry = nextBeams.get(newPrefix);
+              if (!newEntry) {
+                newEntry = { pBlank: -Infinity, pNonBlank: -Infinity };
+                nextBeams.set(newPrefix, newEntry);
+              }
+              newEntry.pNonBlank = logSumExp2(newEntry.pNonBlank, p.pBlank + lp);
+
+              // 2. If previous path ended with non-blank, this character collapses
+              let sameEntry = nextBeams.get(prefix);
+              if (!sameEntry) {
+                sameEntry = { pBlank: -Infinity, pNonBlank: -Infinity };
+                nextBeams.set(prefix, sameEntry);
+              }
+              sameEntry.pNonBlank = logSumExp2(sameEntry.pNonBlank, p.pNonBlank + lp);
+            } else {
+              // Different character: always appends to prefix
+              const newPrefix = prefix + char;
+              let newEntry = nextBeams.get(newPrefix);
+              if (!newEntry) {
+                newEntry = { pBlank: -Infinity, pNonBlank: -Infinity };
+                nextBeams.set(newPrefix, newEntry);
+              }
+              const totalP = logSumExp2(p.pBlank, p.pNonBlank);
+              newEntry.pNonBlank = logSumExp2(newEntry.pNonBlank, totalP + lp);
+            }
           }
-        }
-
-        for (const { prob, index } of candidates) {
-          const char = CHARSET[index] || '';
-          const logProb = Math.log(Math.max(prob, 1e-12));
-
-          let newText = path.text;
-          if (index !== 0 && index !== path.prev) {
-            newText += char;
-          }
-
-          nextPaths.push({
-            text: newText,
-            score: path.score + logProb,
-            prev: index
-          });
         }
       }
 
-      // Retain top paths
-      paths = nextPaths.sort((a, b) => b.score - a.score).slice(0, beamWidth);
+      // Prune to beamWidth
+      const sorted = Array.from(nextBeams.entries())
+        .map(([prefix, p]) => ({ prefix, total: logSumExp2(p.pBlank, p.pNonBlank) }))
+        .sort((a, b) => b.total - a.total)
+        .slice(0, beamWidth);
+
+      beams = new Map();
+      for (const item of sorted) {
+        beams.set(item.prefix, nextBeams.get(item.prefix));
+      }
     }
 
-    return paths.length > 0 ? paths[0].text : '';
+    const finalCandidates = Array.from(beams.entries())
+      .map(([prefix, p]) => ({ prefix, total: logSumExp2(p.pBlank, p.pNonBlank) }))
+      .sort((a, b) => b.total - a.total);
+
+    return finalCandidates.length > 0 ? finalCandidates[0].prefix : '';
   }
 
   decodeGreedy(outputTensor) {
@@ -226,7 +306,7 @@ class UniversalOcrEngine {
     const results = await this.session.run(feeds);
     const outputTensor = Object.values(results)[0];
 
-    let text = this.decodeBeamSearch(outputTensor, 3);
+    let text = this.decodeBeamSearch(outputTensor, 20);
     if (!text || text.trim() === '') {
       text = this.decodeGreedy(outputTensor);
     }
