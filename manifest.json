@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "清大校務與全網通用驗證碼自動填入 (NTHU & Universal Captcha AutoFill)",
-  "version": "1.2.4",
+  "version": "1.3.0",
   "content_security_policy": {
     "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'"
   },
@@ -38,6 +38,7 @@
         "*://www.ccxp.nthu.edu.tw/ccxp/INQUIRE/*",
         "*://ccxp.nthu.edu.tw/ccxp/INQUIRE/*"
       ],
+      "all_frames": true,
       "js": [
         "decaptcha.model.js",
         "decaptcha.js",
@@ -49,6 +50,7 @@
       "matches": [
         "*://oauth.ccxp.nthu.edu.tw/*"
       ],
+      "all_frames": true,
       "js": [
         "oauth.decaptcha.model.js",
         "oauth.decaptcha.js",

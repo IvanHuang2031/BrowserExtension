@@ -164,6 +164,94 @@
       margin-top: 6px;
       min-height: 16px;
     }
+    .input-group {
+      margin-top: 9px;
+    }
+    .input-label {
+      display: block;
+      font-size: 11px;
+      font-weight: 600;
+      color: #475569;
+      margin-bottom: 4px;
+    }
+    .input-field {
+      width: 100%;
+      padding: 6px 10px;
+      border: 1px solid #cbd5e1;
+      border-radius: 6px;
+      font-size: 12px;
+      color: #1e293b;
+      background: #f8fafc;
+      box-sizing: border-box;
+      transition: border-color 0.15s, background-color 0.15s;
+    }
+    .input-field:focus {
+      outline: none;
+      border-color: #7c246c;
+      background: #ffffff;
+    }
+    .password-wrapper {
+      position: relative;
+      display: flex;
+      align-items: center;
+    }
+    .password-wrapper input {
+      padding-right: 32px;
+    }
+    .eye-btn {
+      position: absolute;
+      right: 4px;
+      background: none;
+      border: none;
+      cursor: pointer;
+      padding: 4px;
+      color: #64748b;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 4px;
+    }
+    .eye-btn:hover {
+      color: #334155;
+    }
+    .btn-row {
+      display: flex;
+      gap: 8px;
+      margin-top: 10px;
+    }
+    .btn-secondary {
+      background: #f1f5f9;
+      color: #475569;
+      border: 1px solid #cbd5e1;
+      border-radius: 6px;
+      padding: 7px 10px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 4px;
+      transition: background-color 0.15s ease, color 0.15s ease;
+    }
+    .btn-secondary:hover {
+      background: #fee2e2;
+      color: #dc2626;
+      border-color: #fca5a5;
+    }
+    .btn-secondary:active {
+      transform: translateY(1px);
+    }
+    .security-badge {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 10px;
+      color: #64748b;
+      margin-top: 8px;
+      padding-top: 8px;
+      border-top: 1px dashed #f1f5f9;
+    }
     .features {
       font-size: 11px;
       color: #475569;
@@ -199,7 +287,7 @@
     </div>
     <div class="title-area">
       <h1>驗證碼自動填入</h1>
-      <p id="versionTag">核心版本 v1.2.4 (純本機離線)</p>
+      <p id="versionTag">核心版本 v1.3.0 (純本機離線)</p>
     </div>
   </div>
 
@@ -221,6 +309,65 @@
     <div class="stats-row">
       <span>已累計自動填入</span>
       <span class="stats-badge" id="statsCount">0 次</span>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="toggle-row">
+      <div>
+        <span class="toggle-label">校務/eeclass 自動登入</span>
+        <div style="font-size: 10.5px; color: #64748b; margin-top: 1px;">填寫帳密後自動送出登入</div>
+      </div>
+      <label class="switch">
+        <input type="checkbox" id="autoLoginToggle">
+        <span class="slider"></span>
+      </label>
+    </div>
+
+    <div class="input-group">
+      <label class="input-label" for="savedAccount">學號 / 帳號</label>
+      <input type="text" id="savedAccount" class="input-field" placeholder="請輸入學號或校務帳號" autocomplete="off" spellcheck="false">
+    </div>
+
+    <div class="input-group">
+      <label class="input-label" for="savedPassword">校務密碼</label>
+      <div class="password-wrapper">
+        <input type="password" id="savedPassword" class="input-field" placeholder="請輸入校務系統密碼" autocomplete="off" spellcheck="false">
+        <button type="button" class="eye-btn" id="togglePasswordBtn" title="顯示/隱藏密碼">
+          <svg id="eyeIcon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+            <circle cx="12" cy="12" r="3"></circle>
+          </svg>
+        </button>
+      </div>
+    </div>
+
+    <div class="btn-row">
+      <button type="button" class="action-btn" id="saveLoginBtn" style="flex: 1.2;">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
+          <polyline points="17 21 17 13 7 13 7 21"></polyline>
+          <polyline points="7 3 7 8 15 8"></polyline>
+        </svg>
+        儲存設定
+      </button>
+      <button type="button" class="btn-secondary" id="clearLoginBtn" style="flex: 1;">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="3 6 5 6 21 6"></polyline>
+          <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+        </svg>
+        清除憑證
+      </button>
+    </div>
+
+    <div class="status-msg" id="loginStatusMessage"></div>
+
+    <div class="security-badge">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+        <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+      </svg>
+      <span>憑證僅加密保存在本機 Chrome 沙盒，絕不上傳雲端或 Git</span>
     </div>
   </div>
 
