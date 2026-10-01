@@ -1,8 +1,8 @@
-# BrowserExtension - 清大校務與全網通用驗證碼自動填入 (v1.2.0)
+# BrowserExtension - 清大校務與全網通用驗證碼自動填入 (v1.3.0)
 
 專為**國立清華大學校務資訊系統 (CCXP / AIS)**、**OAuth 認證系統 (eeclass / eLearn)** 以及 **全網任意常見英數字驗證碼** 設計的純本機離線神經網路辨識與自動填入工具。
 
-支援 **電腦端 (Chrome / Edge / Chromium 瀏覽器)** 與 **📱 手機端 iPhone / iPad (Safari)**！
+支援 **電腦端 (Chrome / Edge / Chromium 瀏覽器)** 的**驗證碼與帳密一鍵自動登入**，以及 **📱 手機端 iPhone / iPad (Safari)** 的**驗證碼極速辨識**！
 
 ---
 
@@ -37,6 +37,25 @@
 
 ---
 
+## 🔐 電腦版校務系統與 eeclass / eLearn 帳密自動登入 (v1.3.0)
+
+為解決進入校務系統或數位學習平台每次皆需重新輸入學號與密碼的痛點，v1.3.0 新增了純本機沙盒儲存的帳密自動填入與自動登入功能：
+
+1. **支援入口**：
+   - **校務資訊系統 (CCXP)**：`https://www.ccxp.nthu.edu.tw/ccxp/INQUIRE/`
+   - **清華 OAuth 整合登入 (eeclass / eLearn)**：`https://oauth.ccxp.nthu.edu.tw/`
+2. **自動登入流程**：
+   - 進入登入頁面時，擴充功能會自動同步填入「學號／帳號」與「校務密碼」。
+   - 本機神經網路辨識驗證碼完成並填入後，延遲 200ms 自動觸發送出登入，享受極速秒進體驗。
+3. **零洩漏安全架構（Local-Only Encryption）**：
+   - 帳號密碼**完全儲存在您本機的 Chrome 沙盒內**（`chrome.storage.local`），**絕不上傳雲端、伺服器，更不會進入 Git 倉庫**。
+   - 支援眼睛按鈕隨時切換密碼明文／密文，並提供「清除憑證」按鈕一鍵抹除所有儲存紀錄。
+4. **防無窮重試與帳號防鎖定保護**：
+   - **即時錯誤偵測**：當頁面出現「密碼錯誤」、「驗證碼錯誤」等伺服器提示時，立即自動終止送出動作，絕不盲目重複重試。
+   - **SessionStorage 單次嘗試限制**：同一分頁在短時間內限制嘗試一次，並依 `client_id`（eeclass 與 eLearn）獨立劃分隔離，防止跨系統衝突與帳號被校方鎖定。
+
+---
+
 ## 💻 電腦版 (Chrome / Edge) 安裝教學
 
 ### 步驟 1：開啟擴充功能管理頁面
@@ -47,9 +66,17 @@
 - 在頁面右上角（Edge 在左側選單），開啟 **「開發人員模式 (Developer mode)」**。
 
 ### 步驟 3：載入套件
-1. 從 [Releases 頁面](https://github.com/IvanHuang2031/BrowserExtension/releases) 下載最新版 `BrowserExtension.zip` 並解壓縮。
-2. 點擊左上角 **「載入未封裝項目 (Load unpacked)」**，選取解壓縮出來的資料夾 `BrowserExtension`。
+1. 從 [Releases 頁面](https://github.com/IvanHuang2031/BrowserExtension/releases) 下載最新版 `BrowserExtension.zip` 並解壓縮（或從 GitHub 直接 Clone 原始碼）。
+2. 點擊左上角 **「載入未封裝項目 (Load unpacked)」**，選取包含 `manifest.json` 的資料夾 `BrowserExtension`。
 3. 安裝完成！打開任意有驗證碼的網頁即可自動辨識並填入。
+
+### 步驟 4：啟用校務 / eeclass / eLearn 自動登入（選用）
+1. 點擊瀏覽器工具列右上角的擴充功能圖示（拼圖圖示 ➔ 釘選本擴充功能圖示）。
+2. 點開彈出視窗（Popup），在 **「校務/eeclass 自動登入」** 卡片中將開關切換為 **開啟**。
+3. 分別輸入您的 **學號／帳號** 與 **校務系統密碼**（可點擊右側眼睛圖示檢視輸入內容）。
+4. 點擊 **「儲存設定」**（或在密碼框內直接按 Enter），狀態顯示「已安全儲存」即生效！
+5. 日後進入 CCXP 校務系統、eeclass 或 eLearn 時，將全自動完成填入與登入。
+6. 若日後欲更換密碼或在他人電腦使用完畢，可隨時點擊 **「清除憑證」** 清空本機設定。
 
 ---
 
