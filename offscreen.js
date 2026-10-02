@@ -121,7 +121,7 @@ class UniversalOcrEngine {
 
   preprocessImage(img) {
     let targetWidth = 120;
-    const targetHeight = 64;
+    let targetHeight = 64;
     let rawGray = null;
 
     // Handle HTML Image / Canvas or custom pixel source
@@ -135,6 +135,8 @@ class UniversalOcrEngine {
 
       canvas.width = targetWidth;
       canvas.height = targetHeight;
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
 
       // Fill white background to handle transparent PNGs
       ctx.fillStyle = '#ffffff';
@@ -154,36 +156,24 @@ class UniversalOcrEngine {
     } else if (img && img.rawGray && img.width) {
       // Direct pixel buffer (Node.js test harness)
       targetWidth = img.width;
+      targetHeight = img.height || 64;
       rawGray = img.rawGray;
     } else {
       throw new Error('Unsupported image input type for preprocessImage');
     }
 
-    // Adaptive contrast stretch (de-dilation stroke preservation)
-    // Avoids min-filter horizontal dilation that thickens small strokes and blurs homoglyphs
-    let minG = 1.0;
-    let maxG = 0.0;
+    // Pure, stable bilinear grayscale normalization (in [0, 1])
+    // Avoids fragile single-pixel extrema contrast stretching and noise-connecting dilation
+    const inputData = new Float32Array(rawGray.length);
     for (let i = 0; i < rawGray.length; i++) {
-      if (rawGray[i] < minG) minG = rawGray[i];
-      if (rawGray[i] > maxG) maxG = rawGray[i];
-    }
-
-    const inputData = new Float32Array(targetWidth * targetHeight);
-    const contrastRange = maxG - minG;
-    if (contrastRange > 0.05 && contrastRange < 0.6) {
-      const invRange = 1.0 / contrastRange;
-      for (let i = 0; i < rawGray.length; i++) {
-        let v = (rawGray[i] - minG) * invRange;
-        if (v < 0.0) v = 0.0;
-        if (v > 1.0) v = 1.0;
-        inputData[i] = v;
-      }
-    } else {
-      inputData.set(rawGray);
+      const v = rawGray[i];
+      inputData[i] = v < 0.0 ? 0.0 : (v > 1.0 ? 1.0 : v);
     }
 
     return {
-      tensor: new ort.Tensor('float32', inputData, [1, 1, targetHeight, targetWidth]),
+      tensor: (typeof ort !== 'undefined' && ort.Tensor)
+        ? new ort.Tensor('float32', inputData, [1, 1, targetHeight, targetWidth])
+        : null,
       rawGray: inputData,
       width: targetWidth,
       height: targetHeight
@@ -324,11 +314,12 @@ class UniversalOcrEngine {
       let maxProb = -Infinity;
       let maxIndex = 0;
 
-      for (let j = 0; j < numClasses; j++) {
-        const prob = outputData[offset + j];
+      for (let i = 0; i < VALID_CLASSES.length; i++) {
+        const c = VALID_CLASSES[i];
+        const prob = outputData[offset + c];
         if (prob > maxProb) {
           maxProb = prob;
-          maxIndex = j;
+          maxIndex = c;
         }
       }
 
@@ -345,232 +336,15 @@ class UniversalOcrEngine {
     return { text: result, alignments };
   }
 
+  /**
+   * Geometric homoglyph calibration: Deactivated and deprecated in v1.3.2.
+   * Single-pixel extrema bounding box heuristics suffer mathematical breakdown
+   * under pepper noise and interference streaks (e.g. eeclass captchas), forcing
+   * true lowercase characters into uppercase. The model's native beam search
+   * output is preserved directly without modification.
+   */
   calibrateCase(text, alignments, rawGray, targetWidth, targetHeight, options = {}) {
-    if (!text || text.length === 0) return text;
-    if (options.caseSensitive === false) return text;
-
-    const N = text.length;
-    // Build binary dark mask (< 0.75 is foreground stroke)
-    let sum = 0;
-    for (let i = 0; i < rawGray.length; i++) sum += rawGray[i];
-    const avg = sum / rawGray.length;
-    const threshold = Math.min(0.78, Math.max(0.40, avg * 0.95));
-
-    const mask = new Uint8Array(rawGray.length);
-    for (let i = 0; i < rawGray.length; i++) {
-      if (rawGray[i] < threshold) mask[i] = 1;
-    }
-
-    // Find global foreground bounds
-    let globalMinX = targetWidth, globalMaxX = 0;
-    for (let x = 0; x < targetWidth; x++) {
-      for (let y = 0; y < targetHeight; y++) {
-        if (rawGray[y * targetWidth + x] < threshold) {
-          if (x < globalMinX) globalMinX = x;
-          if (x > globalMaxX) globalMaxX = x;
-        }
-      }
-    }
-
-    if (globalMaxX <= globalMinX) return text;
-
-    // Compute column dark pixel counts for valley detection
-    const colDark = new Int32Array(targetWidth);
-    for (let x = 0; x < targetWidth; x++) {
-      for (let y = 0; y < targetHeight; y++) {
-        if (mask[y * targetWidth + x]) colDark[x]++;
-      }
-    }
-
-    // Slice character regions using midpoints between consecutive CTC peaks,
-    // snapping cuts to the local projection valley between adjacent characters
-    const cuts = [globalMinX];
-    const T = (alignments && alignments.length > 0 && typeof alignments[alignments.length - 1].t === 'number')
-      ? Math.max(27, alignments[alignments.length - 1].t + 2)
-      : 27;
-    const stride = targetWidth / T;
-
-    for (let i = 0; i < N - 1; i++) {
-      let approxCut;
-      if (alignments && i < alignments.length - 1 && typeof alignments[i].t === 'number') {
-        const t1 = alignments[i].t;
-        const t2 = alignments[i + 1].t;
-        approxCut = Math.round(((t1 + t2) / 2) * stride + stride / 2);
-      } else {
-        approxCut = Math.round(globalMinX + (i + 1) * ((globalMaxX - globalMinX) / N));
-      }
-      approxCut = Math.max(globalMinX, Math.min(globalMaxX, approxCut));
-
-      // Snap to local minimum in column projection around approxCut
-      const searchRadius = Math.round(stride * 0.9);
-      let minDark = Infinity;
-      let bestX = approxCut;
-      const xStart = Math.max(globalMinX, approxCut - searchRadius);
-      const xEnd = Math.min(globalMaxX, approxCut + searchRadius);
-      for (let x = xStart; x <= xEnd; x++) {
-        if (colDark[x] < minDark) {
-          minDark = colDark[x];
-          bestX = x;
-        }
-      }
-      cuts.push(bestX);
-    }
-    cuts.push(globalMaxX);
-
-    const metrics = [];
-    for (let i = 0; i < N; i++) {
-      const cMin = i === 0 ? cuts[i] : cuts[i] + 1;
-      const cMax = cuts[i + 1];
-      const ch = text[i];
-
-      let fMinX = cMax, fMaxX = cMin;
-      for (let x = cMin; x <= cMax; x++) {
-        for (let y = 0; y < targetHeight; y++) {
-          if (rawGray[y * targetWidth + x] < threshold) {
-            if (x < fMinX) fMinX = x;
-            if (x > fMaxX) fMaxX = x;
-          }
-        }
-      }
-
-      if (fMaxX < fMinX) {
-        metrics.push({ char: ch, top: 18, bot: 48, h: 30, lt: 18, rt: 18, topPxLeft: 0, topPxRight: 0 });
-        continue;
-      }
-
-      let top = targetHeight, bot = 0;
-      for (let x = fMinX; x <= fMaxX; x++) {
-        for (let y = 0; y < targetHeight; y++) {
-          if (rawGray[y * targetWidth + x] < threshold) {
-            if (y < top) top = y;
-            if (y > bot) bot = y;
-          }
-        }
-      }
-
-      if (bot < top) {
-        metrics.push({ char: ch, top: 18, bot: 48, h: 30, lt: 18, rt: 18, topPxLeft: 0, topPxRight: 0 });
-        continue;
-      }
-
-      const h = bot - top + 1;
-      const charCenterX = (fMinX + fMaxX) / 2;
-      const upperCutoff = top + Math.max(3, h * 0.35);
-
-      let lt = targetHeight, rt = targetHeight;
-      let topPxLeft = 0, topPxRight = 0;
-
-      for (let x = fMinX; x <= fMaxX; x++) {
-        for (let y = 0; y < targetHeight; y++) {
-          if (rawGray[y * targetWidth + x] < threshold) {
-            if (x < charCenterX) {
-              if (y < lt) lt = y;
-              if (y <= upperCutoff) topPxLeft++;
-            } else {
-              if (y < rt) rt = y;
-              if (y <= upperCutoff) topPxRight++;
-            }
-          }
-        }
-      }
-
-      if (lt === targetHeight) lt = top;
-      if (rt === targetHeight) rt = top;
-
-      metrics.push({
-        char: ch,
-        top,
-        bot,
-        h,
-        lt,
-        rt,
-        topPxLeft,
-        topPxRight
-      });
-    }
-
-    // Compute line reference baseline and cap height
-    const nonDescenders = metrics.filter((m) => !'gjpqy'.includes(m.char)).map((m) => m.bot);
-    nonDescenders.sort((a, b) => a - b);
-    const baseline = nonDescenders.length > 0 ? nonDescenders[Math.floor(nonDescenders.length / 2)] : 48;
-
-    const tallTops = metrics
-      .filter((m) => 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789bdfhkl'.includes(m.char) && m.h >= 14)
-      .map((m) => m.top);
-    
-    let capTop, capHeight;
-    if (tallTops.length > 0) {
-      capTop = Math.min(...tallTops);
-      capHeight = Math.max(16, baseline - capTop);
-    } else {
-      // Safe fallback when all characters in the token are x-height (e.g. 'vwso')
-      const minTop = Math.min(...metrics.map((m) => m.top));
-      capHeight = Math.max(16, (baseline - minTop) / 0.72);
-      capTop = baseline - capHeight;
-    }
-
-    const xheightHomoglyphs = new Set(['c', 'C', 'v', 'V', 'w', 'W', 's', 'S', 'o', 'O', 'z', 'Z', 'x', 'X', 'u', 'U', 'm', 'M']);
-    const calibrated = [];
-
-    for (let i = 0; i < N; i++) {
-      const m = metrics[i];
-      let ch = m.char;
-      const topOffset = m.top - capTop;
-      const hRatio = m.h / capHeight;
-
-      // 1. Pure x-height homoglyphs (c, v, w, s, o, z, x, u, m)
-      if (xheightHomoglyphs.has(ch)) {
-        if (ch === ch.toUpperCase() && (topOffset >= 0.16 * capHeight || hRatio <= 0.82)) {
-          ch = ch.toLowerCase();
-        } else if (ch === ch.toLowerCase() && (topOffset <= 0.08 * capHeight && hRatio >= 0.90)) {
-          ch = ch.toUpperCase();
-        }
-      }
-      // 2. Descender homoglyphs (p / P)
-      else if (ch === 'p' || ch === 'P') {
-        if (m.bot - baseline >= 0.14 * capHeight) {
-          ch = 'p';
-        } else if (m.bot <= baseline + 0.08 * capHeight && m.top <= capTop + 0.08 * capHeight) {
-          ch = 'P';
-        }
-      }
-      // 3. j vs J
-      else if (ch === 'j' || ch === 'J') {
-        if (m.bot - baseline >= 0.14 * capHeight) {
-          ch = 'j';
-        } else if (m.bot <= baseline + 0.08 * capHeight) {
-          ch = 'J';
-        }
-      }
-      // 4. d vs D (d has left low bowl, right tall ascender)
-      else if (ch === 'd' || ch === 'D') {
-        if (m.lt - m.rt >= 0.14 * capHeight || (m.topPxRight >= 3 && m.topPxLeft <= 0.3 * m.topPxRight)) {
-          ch = 'd';
-        } else if (Math.abs(m.lt - m.rt) <= 0.08 * capHeight && hRatio >= 0.88) {
-          ch = 'D';
-        }
-      }
-      // 5. h vs H (h has left tall stem, right low arch)
-      else if (ch === 'h' || ch === 'H') {
-        if (m.rt - m.lt >= 0.14 * capHeight || (m.topPxLeft >= 3 && m.topPxRight <= 0.3 * m.topPxLeft)) {
-          ch = 'h';
-        } else if (Math.abs(m.rt - m.lt) <= 0.08 * capHeight && hRatio >= 0.88) {
-          ch = 'H';
-        }
-      }
-      // 6. k vs K (k has tall left stem with lower branches)
-      else if (ch === 'k' || ch === 'K') {
-        if (m.topPxLeft >= 3 && m.topPxRight <= 0.35 * m.topPxLeft) {
-          ch = 'k';
-        } else if (m.topPxRight >= 2 && hRatio >= 0.88) {
-          ch = 'K';
-        }
-      }
-
-      calibrated.push(ch);
-    }
-
-    return calibrated.join('');
+    return text;
   }
 
   async classify(imageElement, options = {}) {
@@ -578,9 +352,6 @@ class UniversalOcrEngine {
 
     const preprocessed = this.preprocessImage(imageElement);
     const tensor = preprocessed.tensor;
-    const rawGray = preprocessed.rawGray;
-    const width = preprocessed.width;
-    const height = preprocessed.height;
 
     const inputName = this.session.inputNames[0] || 'input1';
     const feeds = { [inputName]: tensor };
@@ -588,21 +359,17 @@ class UniversalOcrEngine {
     const results = await this.session.run(feeds);
     const outputTensor = Object.values(results)[0];
 
-    let decoded = this.decodeBeamSearch(outputTensor, 20);
+    const beamWidth = (options && typeof options.beamWidth === 'number') ? options.beamWidth : 20;
+    let decoded = this.decodeBeamSearch(outputTensor, beamWidth);
     if (!decoded.text || decoded.text.trim() === '') {
       decoded = this.decodeGreedy(outputTensor);
     }
 
-    let finalResult = decoded.text;
-    if (finalResult && finalResult.length > 0) {
-      finalResult = this.calibrateCase(finalResult, decoded.alignments, rawGray, width, height, options);
-    }
-
-    return finalResult;
+    return decoded.text;
   }
 }
 
-const EXTENSION_VERSION = '1.3.1';
+const EXTENSION_VERSION = '1.3.2';
 const engine = new UniversalOcrEngine();
 
 // Export for automated testing in Node.js
