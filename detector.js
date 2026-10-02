@@ -12,7 +12,7 @@
     return;
   }
 
-  const DETECTOR_VERSION = '1.2.4';
+  const DETECTOR_VERSION = '1.3.1';
   const processedInputs = new WeakSet();
   const processedImages = new WeakSet();
   let isScanning = false;
@@ -24,6 +24,37 @@
   const SEARCH_EXCLUDE_REGEX = /(search|query|find|kw|keyword|搜尋|搜索|filter)/i;
   const ICON_EXCLUDE_REGEX = /(reload|refresh|sound|audio|speaker|voice|help|icon|close|arrow|logo|avatar|btn|button)/i;
   const SMS_EXCLUDE_REGEX = /(獲取驗證碼|获取验证码|發送驗證碼|发送短信|手機驗證碼|短信驗證碼|SMS|60秒|重新獲取)/i;
+  const CASE_SENSITIVE_REGEX = /(區分大小寫|区分大小写|case[- ]?sensitive|大小寫)/i;
+
+  // Heuristic: Check if page/form requires case-sensitive captcha input
+  function detectCaseSensitivity(input, img) {
+    if (!input && !img) return false;
+
+    // 1. Check input attributes (placeholder, title, aria-label)
+    const inputAttrs = `${input?.placeholder || ''} ${input?.title || ''} ${input?.getAttribute('aria-label') || ''}`;
+    if (CASE_SENSITIVE_REGEX.test(inputAttrs)) return true;
+
+    // 2. Check image attributes (alt, title)
+    const imgAttrs = `${img?.alt || ''} ${img?.title || ''}`;
+    if (CASE_SENSITIVE_REGEX.test(imgAttrs)) return true;
+
+    // 3. Check parent form or container text
+    const container = input?.closest('form, div.form-group, div.form-item, fieldset, table, tr, td, p') || input?.parentElement;
+    if (container) {
+      const text = container.innerText || '';
+      if (CASE_SENSITIVE_REGEX.test(text)) return true;
+    }
+
+    // 4. Check sibling labels or hints
+    if (input?.parentElement) {
+      const hints = input.parentElement.querySelectorAll('label, span, small, p');
+      for (const hint of hints) {
+        if (CASE_SENSITIVE_REGEX.test(hint.innerText || '')) return true;
+      }
+    }
+
+    return false;
+  }
 
   async function isEnabled() {
     return new Promise((resolve) => {
@@ -285,11 +316,13 @@
 
       console.log('[Universal-OCR] Requesting recognition for captcha:', img.id || img.className || img.src?.substring(0, 40));
 
+      const isCaseSensitive = detectCaseSensitivity(input, img);
       chrome.runtime.sendMessage(
         {
           action: 'RECOGNIZE_CAPTCHA',
           imageBase64: raster.base64,
-          imageUrl: raster.url
+          imageUrl: raster.url,
+          caseSensitive: isCaseSensitive
         },
         (response) => {
           if (chrome.runtime.lastError) {

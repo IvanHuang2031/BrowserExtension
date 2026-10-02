@@ -5,7 +5,7 @@
 
 'use strict';
 
-const CURRENT_VERSION = '1.2.4';
+const CURRENT_VERSION = '1.3.1';
 let creatingOffscreenPromise = null;
 let isOffscreenReady = false;
 
@@ -158,7 +158,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         const ocrResult = await sendToOffscreenWithRetry({
           target: 'offscreen',
           type: 'OCR_CLASSIFY',
-          imageBase64: base64Image
+          imageBase64: base64Image,
+          caseSensitive: !!request.caseSensitive
         });
 
         sendResponse(ocrResult);
