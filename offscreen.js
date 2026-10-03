@@ -119,13 +119,58 @@ class UniversalOcrEngine {
     return this.initPromise;
   }
 
-  preprocessImage(img) {
+  processRgbaBuffer(data, width, height, options = {}) {
+    // 1. Analyze color channel statistics to detect blue captcha (dark blue characters + light blue interference lines)
+    let darkBlueCount = 0;
+    let lightBlueCount = 0;
+    for (let i = 0; i < data.length; i += 4) {
+      const r = data[i];
+      const b = data[i + 2];
+      if (r < 90 && b >= r + 10) darkBlueCount++;
+      if (r >= 80 && r <= 180 && b >= r + 10) lightBlueCount++;
+    }
+
+    const isColorAware = (options.colorAware !== false) &&
+      (options.colorAware === true || (darkBlueCount >= 30 && lightBlueCount >= 60));
+
+    const padMargin = Math.round(width * 0.15); // Edge noise cleansing margin
+    const totalPixels = width * height;
+    const rawGray = new Float32Array(totalPixels);
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const idx = y * width + x;
+        const offset = idx * 4;
+        const r = data[offset];
+        const g = data[offset + 1];
+        const b = data[offset + 2];
+
+        if (isColorAware) {
+          // Border noise cleansing: clean margins where characters never reside
+          if (x < padMargin || x > (width - padMargin)) {
+            rawGray[idx] = 1.0;
+          } else if (r > 80 && (b - r) >= 12) {
+            // Filter light blue interference lines / noise to white (1.0), preserving true dark text (R <= 80)
+            rawGray[idx] = 1.0;
+          } else {
+            rawGray[idx] = (0.299 * r + 0.587 * g + 0.114 * b) / 255.0;
+          }
+        } else {
+          rawGray[idx] = (0.299 * r + 0.587 * g + 0.114 * b) / 255.0;
+        }
+      }
+    }
+
+    return rawGray;
+  }
+
+  preprocessImage(img, options = {}) {
     let targetWidth = 120;
     let targetHeight = 64;
     let rawGray = null;
 
     // Handle HTML Image / Canvas or custom pixel source
-    if (typeof document !== 'undefined' && document.createElement) {
+    if (typeof document !== 'undefined' && document.createElement && (img instanceof Element || img.naturalWidth || img.src)) {
       const canvas = document.createElement('canvas');
       const ctx = canvas.getContext('2d', { willReadFrequently: true });
 
@@ -145,14 +190,12 @@ class UniversalOcrEngine {
 
       const imageData = ctx.getImageData(0, 0, targetWidth, targetHeight);
       const data = imageData.data;
-      rawGray = new Float32Array(targetWidth * targetHeight);
-
-      for (let i = 0; i < data.length; i += 4) {
-        const r = data[i];
-        const g = data[i + 1];
-        const b = data[i + 2];
-        rawGray[i / 4] = (0.299 * r + 0.587 * g + 0.114 * b) / 255.0;
-      }
+      rawGray = this.processRgbaBuffer(data, targetWidth, targetHeight, options);
+    } else if (img && img.data && img.width) {
+      // Direct RGBA buffer (Node.js test harness or ImageData)
+      targetWidth = img.width;
+      targetHeight = img.height || 64;
+      rawGray = this.processRgbaBuffer(img.data, targetWidth, targetHeight, options);
     } else if (img && img.rawGray && img.width) {
       // Direct pixel buffer (Node.js test harness)
       targetWidth = img.width;
@@ -350,7 +393,7 @@ class UniversalOcrEngine {
   async classify(imageElement, options = {}) {
     await this.init();
 
-    const preprocessed = this.preprocessImage(imageElement);
+    const preprocessed = this.preprocessImage(imageElement, options);
     const tensor = preprocessed.tensor;
 
     const inputName = this.session.inputNames[0] || 'input1';
@@ -369,7 +412,7 @@ class UniversalOcrEngine {
   }
 }
 
-const EXTENSION_VERSION = '1.3.2';
+const EXTENSION_VERSION = '1.3.3';
 const engine = new UniversalOcrEngine();
 
 // Export for automated testing in Node.js
