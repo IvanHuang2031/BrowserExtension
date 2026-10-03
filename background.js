@@ -5,7 +5,7 @@
 
 'use strict';
 
-const CURRENT_VERSION = '1.3.3';
+const CURRENT_VERSION = '1.3.4';
 let creatingOffscreenPromise = null;
 let isOffscreenReady = false;
 
@@ -86,6 +86,35 @@ function arrayBufferToBase64DataUrl(buffer, mimeType = 'image/png') {
   return `data:${mimeType};base64,${btoa(binary)}`;
 }
 
+function getSenderHost(sender) {
+  try {
+    return new URL(sender.url || sender.tab?.url || '').hostname || null;
+  } catch (e) {
+    return null;
+  }
+}
+
+async function getCapHeightRatio(host) {
+  try {
+    const { caseProfiles = {} } = await chrome.storage.local.get('caseProfiles');
+    return caseProfiles[host] || null;
+  } catch (e) {
+    return null;
+  }
+}
+
+async function saveCapHeightRatio(host, ratio) {
+  try {
+    const { caseProfiles = {} } = await chrome.storage.local.get('caseProfiles');
+    const previous = caseProfiles[host];
+    // Smooth across captchas so one badly segmented image cannot skew the profile
+    caseProfiles[host] = previous ? previous * 0.7 + ratio * 0.3 : ratio;
+    await chrome.storage.local.set({ caseProfiles });
+  } catch (e) {
+    console.warn('[Universal-OCR Background] Failed to save case profile:', e);
+  }
+}
+
 // Always force-recreate offscreen document on extension lifecycle events to bust cached JS
 chrome.runtime.onInstalled.addListener(() => {
   setupOffscreenDocument(true).then(() => {
@@ -154,13 +183,23 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           throw new Error('No image data or valid URL provided.');
         }
 
+        // Per-site cap height lets case calibration work on captchas made only of
+        // x-height letters (e.g. "azvu"), where the image itself has no reference glyph.
+        const host = getSenderHost(sender);
+        const capHeightRatio = host ? await getCapHeightRatio(host) : null;
+
         // Forward to offscreen document with resilient retry
         const ocrResult = await sendToOffscreenWithRetry({
           target: 'offscreen',
           type: 'OCR_CLASSIFY',
           imageBase64: base64Image,
-          caseSensitive: !!request.caseSensitive
+          caseSensitive: !!request.caseSensitive,
+          capHeightRatio
         });
+
+        if (host && ocrResult && ocrResult.capHeightRatio > 0) {
+          await saveCapHeightRatio(host, ocrResult.capHeightRatio);
+        }
 
         sendResponse(ocrResult);
       } catch (err) {

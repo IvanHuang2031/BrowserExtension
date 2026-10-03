@@ -380,16 +380,250 @@ class UniversalOcrEngine {
   }
 
   /**
-   * Geometric homoglyph calibration: Deactivated and deprecated in v1.3.2.
-   * Single-pixel extrema bounding box heuristics suffer mathematical breakdown
-   * under pepper noise and interference streaks (e.g. eeclass captchas), forcing
-   * true lowercase characters into uppercase. The model's native beam search
-   * output is preserved directly without modification.
+   * Typographic case calibration (v1.3.4).
+   *
+   * The underlying model reliably identifies WHICH letter is present but its
+   * upper/lower-case choice is close to random for homoglyph pairs (c/C, s/S,
+   * v/V, w/W, z/Z, ...). Case is instead decided from glyph geometry on the
+   * preprocessed (noise-filtered) image:
+   *   - Letters whose lowercase form has no ascender (XH_LETTERS): lowercase if
+   *     the glyph top sits clearly below the cap line, otherwise uppercase.
+   *   - h/k/b/d: lowercase if the region between cap line and x-height on the
+   *     stem-free side is empty (lowercase h has no top-right arm, etc.).
+   *   - l/L: uppercase if the glyph is wide (L has a foot), lowercase if narrow.
+   *   - j/i: lowercase if a separate dot sits above the body.
+   *   - t/T: uppercase if the top rows are as wide as the glyph (T's top bar).
+   * The cap line comes from glyphs that reach it in either case (digits and
+   * b/d/f/h/k/l/t). When no such glyph exists, options.capHeightRatio (the cap
+   * height previously measured on the same site) is used instead.
+   * Touching glyphs are split using the CTC alignment positions
+   * (requires options.timeSteps). If glyphs cannot be matched one-to-one with
+   * the decoded characters, the model output is returned unchanged.
+   *
+   * @returns {{ text: string, capHeightRatio: number|null }} capHeightRatio is the
+   *   cap height / image height measured from this image, for reuse on the same site.
    */
-  calibrateCase(text, alignments, rawGray, targetWidth, targetHeight, options = {}) {
-    return text;
+  calibrateCaseDetailed(text, alignments, rawGray, targetWidth, targetHeight, options = {}) {
+    const unchanged = { text, capHeightRatio: null };
+    if (!text || !rawGray || rawGray.length !== targetWidth * targetHeight) return unchanged;
+
+    const W = targetWidth;
+    const H = targetHeight;
+    const XH_LETTERS = 'acegmnopqrsuvwxyz';
+    const TALL_CHARS = 'bdfhklt0123456789';
+    const DESCENDERS = 'gjpqy';
+    const LOWER_THRESHOLD = 0.13; // glyph top below cap line by >13% of text height => lowercase
+    const ink = (x, y) => rawGray[y * W + x] < 0.5;
+    const chars = Array.from(text);
+
+    // 1. Segment glyphs by vertical ink projection
+    const colInk = new Array(W).fill(0);
+    for (let x = 0; x < W; x++) for (let y = 0; y < H; y++) if (ink(x, y)) colInk[x]++;
+    let runs = [];
+    let start = -1;
+    for (let x = 0; x <= W; x++) {
+      const hasInk = x < W && colInk[x] > 0;
+      if (hasInk && start < 0) start = x;
+      if (!hasInk && start >= 0) { runs.push([start, x]); start = -1; }
+    }
+    runs = runs.filter(([s, e]) => {
+      let total = 0;
+      for (let x = s; x < e; x++) total += colInk[x];
+      return total >= 6; // drop residual specks
+    });
+    const merged = [];
+    for (const r of runs) {
+      const last = merged[merged.length - 1];
+      // Merge slivers (i/j dots, split strokes) into their neighbour
+      if (last && (r[1] - r[0] < 5 || last[1] - last[0] < 5) && r[0] - last[1] <= 3) {
+        last[1] = r[1];
+      } else {
+        merged.push([r[0], r[1]]);
+      }
+    }
+    if (merged.length === 0) return unchanged;
+
+    // 2. Match glyphs to characters. With CTC alignments, each character is assigned
+    //    to the nearest run, and a run holding several characters (touching glyphs)
+    //    is split at the lowest-ink column between them.
+    let segs = null;
+    const T = options.timeSteps;
+    if (T > 0 && Array.isArray(alignments) && alignments.length === chars.length) {
+      const sx = W / T;
+      const centers = alignments.map((a) => (a.t + 0.5) * sx);
+      const assigned = merged.map(() => []);
+      centers.forEach((cx, i) => {
+        let best = 0;
+        let bestDist = Infinity;
+        merged.forEach(([s, e], r) => {
+          const d = (cx >= s && cx < e) ? 0 : Math.min(Math.abs(cx - s), Math.abs(cx - (e - 1)));
+          if (d < bestDist) { bestDist = d; best = r; }
+        });
+        assigned[best].push(i);
+      });
+      segs = new Array(chars.length).fill(null);
+      for (let r = 0; r < merged.length && segs; r++) {
+        const [s, e] = merged[r];
+        const idx = assigned[r];
+        if (idx.length === 0) continue; // noise run
+        const cuts = [s];
+        for (let k = 0; k + 1 < idx.length; k++) {
+          const lo = Math.floor(Math.max(s + 1, Math.min(centers[idx[k]], centers[idx[k + 1]]) + 1));
+          const hi = Math.floor(Math.min(e - 1, Math.max(centers[idx[k]], centers[idx[k + 1]])));
+          if (hi <= lo) { segs = null; break; }
+          let cut = lo;
+          for (let x = lo; x < hi; x++) if (colInk[x] < colInk[cut]) cut = x;
+          cuts.push(cut);
+        }
+        if (!segs) break;
+        cuts.push(e);
+        idx.forEach((i, k) => { segs[i] = [cuts[k], cuts[k + 1]]; });
+      }
+      if (segs && segs.some((sg) => !sg)) segs = null;
+    } else if (merged.length === chars.length) {
+      segs = merged;
+    }
+    if (!segs) return unchanged;
+
+    // 3. Vertical extent of each glyph, ignoring isolated noise rows
+    const boxes = segs.map(([s, e]) => {
+      const cnt = new Array(H).fill(0);
+      for (let y = 0; y < H; y++) for (let x = s; x < e; x++) if (ink(x, y)) cnt[y]++;
+      let top = -1;
+      let bottom = -1;
+      for (let y = 0; y + 2 < H; y++) {
+        if (cnt[y] >= 2 && cnt[y + 1] >= 1 && cnt[y + 2] >= 1) { top = y; break; }
+      }
+      for (let y = H - 1; y >= 2; y--) {
+        if (cnt[y] >= 2 && cnt[y - 1] >= 1 && cnt[y - 2] >= 1) { bottom = y; break; }
+      }
+      return top >= 0 && bottom >= 0 ? { top, bottom } : null;
+    });
+    if (boxes.some((b) => !b)) return unchanged;
+
+    const median = (arr) => {
+      const s = [...arr].sort((a, b) => a - b);
+      const m = s.length >> 1;
+      return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
+    };
+
+    // 4. Reference lines: baseline from non-descender glyphs, cap line from tall glyphs
+    const baselineSamples = boxes.filter((_, i) => !DESCENDERS.includes(chars[i].toLowerCase())).map((b) => b.bottom);
+    if (baselineSamples.length === 0) return unchanged;
+    const baseline = median(baselineSamples);
+
+    // Height-based rules assume glyphs share one baseline. Captchas with strongly
+    // rotated or vertically jittered glyphs break that assumption, so keep the model output.
+    const maxGlyphHeight = Math.max(...boxes.map((b) => b.bottom - b.top));
+    if (baselineSamples.length >= 2 &&
+        Math.max(...baselineSamples) - Math.min(...baselineSamples) > 0.15 * maxGlyphHeight) {
+      return unchanged;
+    }
+
+    const tallTops = boxes.filter((_, i) => TALL_CHARS.includes(chars[i].toLowerCase())).map((b) => b.top);
+    const xhTops = boxes.filter((_, i) => XH_LETTERS.includes(chars[i].toLowerCase())).map((b) => b.top);
+    let capLine;
+    let measured = false;
+    if (tallTops.length > 0) {
+      capLine = Math.min(median(tallTops), ...boxes.map((b) => b.top));
+      measured = true;
+    } else if (xhTops.length > 0 &&
+               (Math.max(...xhTops) - Math.min(...xhTops)) > LOWER_THRESHOLD * (baseline - Math.min(...xhTops))) {
+      capLine = Math.min(...xhTops); // no tall reference, but tops clearly split into two levels
+      measured = true;
+    } else if (options.capHeightRatio > 0) {
+      capLine = baseline - options.capHeightRatio * H; // cap height learned earlier on this site
+    } else {
+      return unchanged; // all glyphs at one level with no reference: case is undecidable
+    }
+    const textHeight = baseline - capLine;
+    if (textHeight < 10) return unchanged;
+
+    // 5. Decide case per character
+    const calibrated = chars.map((ch, i) => {
+      const lower = ch.toLowerCase();
+      const [s, e] = segs[i];
+      if (XH_LETTERS.includes(lower)) {
+        return (boxes[i].top - capLine) / textHeight > LOWER_THRESHOLD ? lower : ch.toUpperCase();
+      }
+      if ('hkbd'.includes(lower)) {
+        const w = e - s;
+        const y0 = Math.max(0, Math.floor(capLine + 0.08 * textHeight));
+        const y1 = Math.max(0, Math.floor(capLine + 0.25 * textHeight));
+        const x0 = lower === 'd' ? s : s + Math.floor(w * 0.6);
+        const x1 = lower === 'd' ? s + Math.floor(w * 0.4) : e;
+        let filled = 0;
+        let area = 0;
+        for (let y = y0; y < y1; y++) {
+          for (let x = x0; x < x1; x++) { area++; if (ink(x, y)) filled++; }
+        }
+        if (area > 0) return filled / area < 0.08 ? lower : ch.toUpperCase();
+      }
+      if (lower === 'j' || lower === 'i') {
+        // A separate dot above the body means lowercase; otherwise keep the model's
+        // choice (a missed dot under noise must not turn j into J)
+        const { top, bottom } = boxes[i];
+        const rowInk = [];
+        let total = 0;
+        for (let y = top; y <= bottom; y++) {
+          let n = 0;
+          for (let x = s; x < e; x++) if (ink(x, y)) n++;
+          rowInk.push(n);
+          total += n;
+        }
+        const limit = Math.floor(0.45 * (bottom - top));
+        let seen = false;
+        for (let y = 0; y < limit; y++) {
+          if (rowInk[y] > 0) {
+            seen = true;
+          } else if (seen) {
+            let dot = 0;
+            for (let k = 0; k < y; k++) dot += rowInk[k];
+            if (dot >= 3 && dot < 0.25 * total) return lower;
+            break;
+          }
+        }
+        return ch;
+      }
+      if (lower === 't') {
+        // T has a full-width bar at the very top; t only shows its stem there
+        const { top, bottom } = boxes[i];
+        const spans = [];
+        for (let y = top; y <= bottom; y++) {
+          let first = -1;
+          let last = -1;
+          for (let x = s; x < e; x++) if (ink(x, y)) { if (first < 0) first = x; last = x; }
+          spans.push(first >= 0 ? last - first + 1 : 0);
+        }
+        const k = Math.max(1, Math.floor(0.12 * (bottom - top)));
+        const topSpan = spans.slice(0, k).reduce((a, b) => a + b, 0) / k;
+        return topSpan / Math.max(...spans) < 0.6 ? 't' : 'T';
+      }
+      if (lower === 'l') {
+        // Width of columns holding >= 2 ink pixels: L has a foot, l is a bare stem
+        let first = -1;
+        let last = -1;
+        for (let x = s; x < e; x++) {
+          let n = 0;
+          for (let y = 0; y < H; y++) if (ink(x, y)) n++;
+          if (n >= 2) { if (first < 0) first = x; last = x; }
+        }
+        const glyphWidth = first >= 0 ? last - first + 1 : 0;
+        return glyphWidth > 0.33 * textHeight ? 'L' : 'l';
+      }
+      return ch;
+    }).join('');
+
+    return { text: calibrated, capHeightRatio: measured ? textHeight / H : null };
   }
 
+  calibrateCase(text, alignments, rawGray, targetWidth, targetHeight, options = {}) {
+    return this.calibrateCaseDetailed(text, alignments, rawGray, targetWidth, targetHeight, options).text;
+  }
+
+  /**
+   * @returns {Promise<{ text: string, capHeightRatio: number|null }>}
+   */
   async classify(imageElement, options = {}) {
     await this.init();
 
@@ -408,11 +642,18 @@ class UniversalOcrEngine {
       decoded = this.decodeGreedy(outputTensor);
     }
 
-    return decoded.text;
+    return this.calibrateCaseDetailed(
+      decoded.text,
+      decoded.alignments,
+      preprocessed.rawGray,
+      preprocessed.width,
+      preprocessed.height,
+      { ...options, timeSteps: outputTensor.dims[0] }
+    );
   }
 }
 
-const EXTENSION_VERSION = '1.3.3';
+const EXTENSION_VERSION = '1.3.4';
 const engine = new UniversalOcrEngine();
 
 // Export for automated testing in Node.js
@@ -469,9 +710,12 @@ if (typeof chrome !== 'undefined' && chrome.runtime?.onMessage) {
             img.src = request.imageBase64;
           });
 
-          const text = await engine.classify(img, { caseSensitive: !!request.caseSensitive });
+          const { text, capHeightRatio } = await engine.classify(img, {
+            caseSensitive: !!request.caseSensitive,
+            capHeightRatio: request.capHeightRatio
+          });
           console.log(`[Universal-OCR Offscreen v${EXTENSION_VERSION}] Recognized text:`, text);
-          sendResponse({ success: true, text, version: EXTENSION_VERSION });
+          sendResponse({ success: true, text, capHeightRatio, version: EXTENSION_VERSION });
         } catch (err) {
           console.error(`[Universal-OCR Offscreen v${EXTENSION_VERSION}] Classification error:`, err);
           sendResponse({ success: false, error: err.message || String(err) });
