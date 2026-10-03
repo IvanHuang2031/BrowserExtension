@@ -1,5 +1,5 @@
 /**
- * Universal Captcha OCR Case-Sensitivity & Real Case Test Suite (v1.3.3)
+ * Universal Captcha OCR Case-Sensitivity & Real Case Test Suite (v1.3.4)
  * Validates fixes for:
  * 1. Model native pure-grayscale beam search inference with Color-Aware Filtering
  * 2. Intelligent separation of dark blue characters vs light blue interference lines
@@ -47,8 +47,8 @@ test('Charset & Token Mapping Integrity', async (t) => {
     assert.strictEqual(VALID_CLASSES[0], 0, 'First class must be CTC blank 0');
   });
 
-  await t.test('EXTENSION_VERSION is bumped to 1.3.3', () => {
-    assert.strictEqual(EXTENSION_VERSION, '1.3.3', 'EXTENSION_VERSION must be 1.3.3');
+  await t.test('EXTENSION_VERSION is bumped to 1.3.4', () => {
+    assert.strictEqual(EXTENSION_VERSION, '1.3.4', 'EXTENSION_VERSION must be 1.3.4');
   });
 });
 
@@ -208,8 +208,7 @@ test('Real Captcha Case Recognition (8 Real Cases including REPR, evVw, Ys9E)', 
   }
 
   const items = JSON.parse(fs.readFileSync(realCasesPath, 'utf8'));
-  let totalChars = 0;
-  let correctChars = 0;
+  let exactMatches = 0;
 
   for (const item of items) {
     await t.test(`Real Case: ${item.expected}`, () => {
@@ -220,39 +219,6 @@ test('Real Captcha Case Recognition (8 Real Cases including REPR, evVw, Ys9E)', 
 
       const decoded = engine.decodeBeamSearch(fakeTensor, 20);
       assert.ok(decoded.text && decoded.text.length > 0, `Decoded text should not be empty for ${item.expected}`);
-
-      // Count character accuracy
-      for (let i = 0; i < item.expected.length; i++) {
-        totalChars++;
-        if (decoded.text[i] === item.expected[i]) {
-          correctChars++;
-        }
-      }
-
-      // 1. Specific case validations:
-      if (item.expected === 'REPR') {
-        assert.strictEqual(decoded.text, 'REPR', 'REPR must be exactly decoded without false lowercase r (REPr)');
-      } else if (item.expected === 'evVw') {
-        assert.strictEqual(decoded.text.toLowerCase(), 'evvw', 'evVw must match case-insensitively');
-        assert.notStrictEqual(decoded.text, 'evyw', 'evVw must NOT be confused with descender y (evyw)');
-        assert.strictEqual(decoded.text[2], 'V', 'evVw 3rd character must be uppercase V');
-      } else if (item.expected === 'Ys9E') {
-        assert.strictEqual(decoded.text.toLowerCase(), 'ys9e', 'Ys9E must match case-insensitively');
-        assert.strictEqual(decoded.text[0], 'Y', 'Ys9E 1st character must be uppercase Y');
-        assert.strictEqual(decoded.text[3], 'E', 'Ys9E 4th character must be uppercase E');
-        assert.notStrictEqual(decoded.text, 'Ys9e', 'Ys9E must NOT be misrecognized with lowercase e (Ys9e)');
-      } else if (item.expected === 'pyU3') {
-        assert.strictEqual(decoded.text.toLowerCase(), 'pyu3', 'pyU3 must match case-insensitively');
-      } else if (item.expected === 'Pvvs') {
-        assert.strictEqual(decoded.text.toLowerCase(), 'pvvs', 'Pvvs must match case-insensitively without ghost prefixes');
-      } else if (item.expected === 'Lcwh') {
-        assert.strictEqual(decoded.text.toLowerCase(), 'lcwh', 'Lcwh must match case-insensitively');
-      } else if (item.expected === 'sChz') {
-        assert.strictEqual(decoded.text.toLowerCase(), 'schz', 'sChz must match case-insensitively');
-        assert.notStrictEqual(decoded.text, 'SCHZ', 'sChz must NOT be destructively transformed to all-caps SCHZ');
-      } else if (item.expected === 'BFzK') {
-        assert.strictEqual(decoded.text, 'BFzK', 'BFzK must be exactly decoded');
-      }
 
       // 2. Case-insensitive match must be 100% across all 8 real cases
       assert.strictEqual(
@@ -279,7 +245,7 @@ test('Real Captcha Case Recognition (8 Real Cases including REPR, evVw, Ys9E)', 
       assert.strictEqual(preprocessed.height, item.height, 'Preprocessed height should match');
       assert.strictEqual(preprocessed.rawGray.length, item.width * item.height, 'Length should match');
 
-      // 5. calibrateCase must safely pass through decoded text
+      // 5. Case calibration must recover the exact case-sensitive answer
       const rawGray = new Float32Array(item.rawGray);
       const calibrated = engine.calibrateCase(
         decoded.text,
@@ -287,18 +253,15 @@ test('Real Captcha Case Recognition (8 Real Cases including REPR, evVw, Ys9E)', 
         rawGray,
         item.width,
         item.height,
-        { caseSensitive: true }
+        { caseSensitive: true, timeSteps: item.dims[0] }
       );
-      assert.strictEqual(calibrated, decoded.text, 'calibrateCase must pass through decoded text untouched');
+      assert.strictEqual(calibrated, item.expected, `Calibrated text for ${item.expected} must match exactly (case-sensitive)`);
+      if (calibrated === item.expected) exactMatches++;
     });
   }
 
-  await t.test('Overall 8 Real Cases Character-Level Accuracy >= 65% (and 100% Case-Insensitive)', () => {
-    const accuracy = correctChars / totalChars;
-    assert.ok(
-      accuracy >= 0.65,
-      `Overall character accuracy should be at least 65%, but got ${(accuracy * 100).toFixed(1)}% (${correctChars}/${totalChars})`
-    );
+  await t.test('All 8 real cases are exactly correct including letter case', () => {
+    assert.strictEqual(exactMatches, items.length, `Expected ${items.length} exact matches, got ${exactMatches}`);
   });
 });
 
@@ -330,7 +293,7 @@ test('Universal Captcha Synthetic Case Recognition', async (t) => {
         `Case-insensitive match for ${item.expected}`
       );
 
-      // Verify calibrateCase returns raw decoded text without corruption
+      // Case calibration must recover the exact case-sensitive answer
       const rawGray = new Float32Array(item.rawGray);
       const calibrated = engine.calibrateCase(
         decoded.text,
@@ -338,26 +301,95 @@ test('Universal Captcha Synthetic Case Recognition', async (t) => {
         rawGray,
         item.width,
         item.height,
-        { caseSensitive: true }
+        { caseSensitive: true, timeSteps: item.dims[0] }
       );
-      assert.strictEqual(calibrated, decoded.text, 'calibrateCase must preserve decoded text');
+      assert.strictEqual(calibrated, item.expected, `Calibrated text for ${item.expected} must match exactly (case-sensitive)`);
     });
   }
 });
 
-test('calibrateCase Non-Destruction & Passthrough Invariant Tests', async (t) => {
+test('calibrateCase Fallback Behaviour', async (t) => {
   const engine = new UniversalOcrEngine();
 
-  await t.test('Safely preserves mixed case without forcing all uppercase', () => {
-    const testStrings = ['pyU3', 'sChz', 'Pvvs', 'BFzK', 'Lcwh', 'vwso', 'dgEL', 'JGWv'];
-    for (const str of testStrings) {
-      const result = engine.calibrateCase(str, [], new Float32Array(10), 120, 64, { caseSensitive: true });
-      assert.strictEqual(result, str, `calibrateCase must preserve ${str} unmodified`);
+  await t.test('Returns text unchanged when pixel buffer does not match dimensions', () => {
+    for (const str of ['pyU3', 'sChz', 'Pvvs', 'BFzK']) {
+      assert.strictEqual(engine.calibrateCase(str, [], new Float32Array(10), 120, 64), str);
     }
   });
 
-  await t.test('Case-insensitive option preserves text unmodified', () => {
-    const result = engine.calibrateCase('AbCd', [], new Float32Array(10), 120, 64, { caseSensitive: false });
-    assert.strictEqual(result, 'AbCd', 'calibrateCase must preserve text when caseSensitive is false');
+  await t.test('Returns text unchanged when no glyphs can be segmented (blank image)', () => {
+    const blank = new Float32Array(120 * 64).fill(1.0);
+    assert.strictEqual(engine.calibrateCase('AbCd', [], blank, 120, 64), 'AbCd');
   });
+
+  await t.test('Returns empty input unchanged', () => {
+    assert.strictEqual(engine.calibrateCase('', [], new Float32Array(120 * 64), 120, 64), '');
+  });
+});
+
+test('Same-Site Captchas: touching glyphs, L/l, j dot, t bar and learned cap height', async (t) => {
+  const engine = new UniversalOcrEngine();
+  // Screenshots of one case-sensitive site, in the order they were seen: 4ZL4, ZmnT, azvu, DtjS, tPtN
+  const items = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures', 'site_cases.json'), 'utf8'));
+  let capHeightRatio = null;
+
+  const run = (item, options = {}) => {
+    const decoded = engine.decodeBeamSearch({ dims: item.dims, data: expandTensor(item) }, 20);
+    return {
+      decoded,
+      result: engine.calibrateCaseDetailed(
+        decoded.text, decoded.alignments, new Float32Array(item.rawGray), item.width, item.height,
+        { timeSteps: item.dims[0], ...options }
+      )
+    };
+  };
+
+  for (const item of items) {
+    await t.test(`Site Case: ${item.expected}`, () => {
+      const { result } = run(item, { capHeightRatio });
+      assert.strictEqual(result.text, item.expected);
+      if (result.capHeightRatio) capHeightRatio = result.capHeightRatio;
+    });
+  }
+
+  await t.test('All-x-height captcha (azvu) is undecidable without a learned cap height', () => {
+    const azvu = items.find((i) => i.expected === 'azvu');
+    const { decoded, result } = run(azvu);
+    assert.strictEqual(result.text, decoded.text, 'Without a site profile the model output must be kept unchanged');
+    assert.strictEqual(result.capHeightRatio, null);
+  });
+
+  await t.test('Misread T/t and J/j are restored from glyph shape', () => {
+    for (const [expected, misread] of [['tPtN', 'TPtN'], ['DtjS', 'DtJS']]) {
+      const item = items.find((i) => i.expected === expected);
+      const decoded = engine.decodeBeamSearch({ dims: item.dims, data: expandTensor(item) }, 20);
+      const alignments = decoded.alignments.map((a, k) => ({ ...a, char: misread[k] }));
+      const text = engine.calibrateCase(misread, alignments, new Float32Array(item.rawGray), item.width, item.height,
+        { timeSteps: item.dims[0] });
+      assert.strictEqual(text, expected);
+    }
+  });
+
+  await t.test('Narrow l is not promoted to L, wide L is restored from a misread l', () => {
+    const item = items.find((i) => i.expected === '4ZL4');
+    const decoded = engine.decodeBeamSearch({ dims: item.dims, data: expandTensor(item) }, 20);
+    const misread = decoded.text.replace('L', 'l');
+    const alignments = decoded.alignments.map((a) => ({ ...a, char: a.char === 'L' ? 'l' : a.char }));
+    const text = engine.calibrateCase(misread, alignments, new Float32Array(item.rawGray), item.width, item.height,
+      { timeSteps: item.dims[0] });
+    assert.strictEqual(text, '4ZL4');
+  });
+});
+
+test('calibrateCase skips captchas whose glyphs do not share a baseline', () => {
+  const engine = new UniversalOcrEngine();
+  const W = 120;
+  const H = 64;
+  const gray = new Float32Array(W * H).fill(1.0);
+  const fill = (x0, x1, y0, y1) => {
+    for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) gray[y * W + x] = 0.0;
+  };
+  fill(20, 40, 10, 40); // glyph sitting on baseline 40
+  fill(60, 80, 25, 58); // glyph jittered down to baseline 58
+  assert.strictEqual(engine.calibrateCase('Sz', [], gray, W, H), 'Sz', 'Vertically jittered glyphs must keep model output');
 });
