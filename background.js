@@ -5,7 +5,7 @@
 
 'use strict';
 
-const CURRENT_VERSION = '1.3.4';
+const CURRENT_VERSION = '1.3.5';
 let creatingOffscreenPromise = null;
 let isOffscreenReady = false;
 
