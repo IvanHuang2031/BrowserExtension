@@ -5,409 +5,514 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>驗證碼自動填入</title>
   <style>
+    :root {
+      --bg: #ffffff;
+      --text: #18181b;
+      --muted: #71717a;
+      --faint: #a1a1aa;
+      --line: #ececef;
+      --accent: #7c246c;
+      --accent-hover: #6a1e5c;
+      --accent-soft: #f7eff5;
+      --accent-line: rgba(124, 36, 108, 0.16);
+      --on-accent: #ffffff;
+      --switch-off: #d4d4d8;
+      --field: #ffffff;
+      --field-border: #d4d4d8;
+      --ok: #15803d;
+      --warn: #b45309;
+      --error: #dc2626;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #1c1c1f;
+        --text: #ededf0;
+        --muted: #a1a1aa;
+        --faint: #71717a;
+        --line: #2c2c31;
+        --accent: #c56aae;
+        --accent-hover: #d17fbc;
+        --accent-soft: #2a1d27;
+        --accent-line: rgba(197, 106, 174, 0.22);
+        --on-accent: #1c1c1f;
+        --switch-off: #3f3f46;
+        --field: #232327;
+        --field-border: #3f3f46;
+        --ok: #4ade80;
+        --warn: #fbbf24;
+        --error: #f87171;
+      }
+    }
+
     * {
       box-sizing: border-box;
       margin: 0;
       padding: 0;
     }
+
     body {
       width: 320px;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-      background-color: #f8fafc;
-      color: #1e293b;
-      padding: 16px;
+      background: var(--bg);
+      color: var(--text);
+      font-family: "Microsoft JhengHei UI", "Microsoft JhengHei", "PingFang TC", "Noto Sans TC", system-ui, sans-serif;
+      font-size: 13px;
+      line-height: 1.45;
+      border-top: 3px solid var(--accent);
       user-select: none;
     }
-    .header {
+
+    button {
+      font: inherit;
+      color: inherit;
+    }
+
+    [hidden] {
+      display: none !important;
+    }
+
+    /* Header */
+    .head {
+      position: relative;
+      overflow: hidden;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 16px 20px 15px;
+      background: var(--accent-soft);
+      border-bottom: 1px solid var(--line);
+    }
+    .head .noise {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      color: var(--accent-line);
+      pointer-events: none;
+    }
+    .brand {
+      position: relative;
       display: flex;
       align-items: center;
       gap: 10px;
-      margin-bottom: 14px;
-      padding-bottom: 12px;
-      border-bottom: 1px solid #e2e8f0;
     }
-    .logo-badge {
+    .logo {
+      position: relative;
       width: 34px;
       height: 34px;
-      background: linear-gradient(135deg, #7c246c, #9d3189);
-      border-radius: 8px;
+      border-radius: 9px;
+      background: var(--accent);
+      color: var(--on-accent);
       display: flex;
       align-items: center;
       justify-content: center;
-      color: white;
-      font-weight: bold;
-      box-shadow: 0 2px 4px rgba(124, 36, 108, 0.25);
+      overflow: hidden;
+      flex-shrink: 0;
     }
-    .title-area h1 {
-      font-size: 13.5px;
+    .logo span {
+      display: inline-block;
+      font-size: 16px;
       font-weight: 700;
-      color: #0f172a;
     }
-    .title-area p {
-      font-size: 11px;
-      color: #64748b;
+    .logo .glyph-a {
+      font-family: Georgia, "Times New Roman", serif;
+      font-style: italic;
+      transform: rotate(-12deg) translateY(1px);
+    }
+    .logo .glyph-z {
+      font-family: "Courier New", monospace;
+      transform: rotate(9deg) translateY(-1px);
+    }
+    .logo .strike {
+      position: absolute;
+      left: 3px;
+      right: 3px;
+      top: 52%;
+      height: 1.5px;
+      background: currentColor;
+      opacity: 0.75;
+      transform: rotate(-14deg);
+    }
+    h1 {
+      font-size: 15px;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+    }
+    .subtitle {
+      font-size: 11.5px;
+      color: var(--muted);
       margin-top: 1px;
     }
-    .card {
-      background: white;
-      border: 1px solid #e2e8f0;
-      border-radius: 10px;
-      padding: 12px 14px;
-      margin-bottom: 12px;
-      box-shadow: 0 1px 2px rgba(0,0,0,0.03);
+    .count {
+      position: relative;
+      text-align: right;
     }
-    .toggle-row {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-    }
-    .toggle-subrow {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      margin-top: 8px;
-      padding-top: 8px;
-      border-top: 1px solid #f1f5f9;
-    }
-    .toggle-label {
-      font-size: 13px;
+    .count-num {
+      font-family: "Segoe UI", system-ui, sans-serif;
+      font-size: 26px;
       font-weight: 600;
-      color: #334155;
+      line-height: 1;
+      color: var(--accent);
+      font-variant-numeric: tabular-nums;
     }
-    .toggle-sublabel {
+    .count-unit {
+      font-size: 11px;
+      color: var(--muted);
+      margin-top: 3px;
+    }
+
+    /* Settings rows */
+    .body {
+      padding: 2px 20px 14px;
+    }
+    .group {
+      border-bottom: 1px solid var(--line);
+    }
+    .row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 11px 0;
+    }
+    .row + .row {
+      border-top: 1px solid var(--line);
+    }
+    .label {
+      font-size: 13.5px;
+    }
+    .desc {
       font-size: 12px;
-      color: #475569;
+      color: var(--muted);
+      margin-top: 1px;
     }
+
+    /* Switch */
     .switch {
       position: relative;
       display: inline-block;
-      width: 40px;
-      height: 22px;
+      width: 34px;
+      height: 20px;
+      flex-shrink: 0;
     }
     .switch input {
+      position: absolute;
       opacity: 0;
-      width: 0;
-      height: 0;
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      cursor: pointer;
+      z-index: 1;
     }
     .slider {
       position: absolute;
-      cursor: pointer;
-      top: 0;
-      left: 0;
-      right: 0;
-      bottom: 0;
-      background-color: #cbd5e1;
-      transition: .25s cubic-bezier(0.4, 0, 0.2, 1);
-      border-radius: 22px;
-    }
-    .slider:before {
-      position: absolute;
-      content: "";
-      height: 16px;
-      width: 16px;
-      left: 3px;
-      bottom: 3px;
-      background-color: white;
-      transition: .25s cubic-bezier(0.4, 0, 0.2, 1);
-      border-radius: 50%;
-      box-shadow: 0 1px 3px rgba(0,0,0,0.15);
-    }
-    input:checked + .slider {
-      background-color: #7c246c;
-    }
-    input:checked + .slider:before {
-      transform: translateX(18px);
-    }
-    .stats-row {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      margin-top: 10px;
-      padding-top: 10px;
-      border-top: 1px dashed #f1f5f9;
-      font-size: 12px;
-      color: #64748b;
-    }
-    .stats-badge {
-      font-weight: 700;
-      color: #7c246c;
-      background: #fdf2f8;
-      padding: 1px 8px;
+      inset: 0;
+      background: var(--switch-off);
       border-radius: 10px;
+      transition: background-color 0.2s ease;
     }
-    .action-btn {
-      width: 100%;
-      background: #7c246c;
-      color: white;
-      border: none;
-      border-radius: 6px;
-      padding: 8px 12px;
-      font-size: 12px;
-      font-weight: 600;
-      cursor: pointer;
+    .slider::before {
+      content: "";
+      position: absolute;
+      top: 2px;
+      left: 2px;
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: #ffffff;
+      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+      transition: transform 0.2s ease;
+    }
+    .switch input:checked + .slider {
+      background: var(--accent);
+    }
+    .switch input:checked + .slider::before {
+      transform: translateX(14px);
+    }
+    .switch input:focus-visible + .slider {
+      outline: 2px solid var(--accent);
+      outline-offset: 2px;
+    }
+
+    /* Auto login details */
+    .saved {
       display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 6px;
-      transition: background-color 0.15s ease;
+      align-items: baseline;
+      justify-content: space-between;
+      font-size: 12.5px;
+      color: var(--muted);
+      background: var(--accent-soft);
+      border-radius: 8px;
+      padding: 8px 10px;
+      margin-bottom: 10px;
     }
-    .action-btn:hover {
-      background: #9d3189;
-    }
-    .action-btn:active {
-      transform: translateY(1px);
-    }
-    .status-msg {
-      font-size: 11px;
-      color: #059669;
-      text-align: center;
-      margin-top: 6px;
-      min-height: 16px;
-    }
-    .input-group {
-      margin-top: 9px;
-    }
-    .input-label {
-      display: block;
-      font-size: 11px;
+    .saved-account {
       font-weight: 600;
-      color: #475569;
+      color: var(--text);
+      font-family: "Segoe UI", system-ui, sans-serif;
+      font-variant-numeric: tabular-nums;
+      letter-spacing: 0.02em;
+      margin-left: 6px;
+      user-select: text;
+    }
+    .link {
+      background: none;
+      border: 0;
+      padding: 0;
+      color: var(--accent);
+      font-size: 12.5px;
+      cursor: pointer;
+    }
+    .link:hover {
+      text-decoration: underline;
+    }
+    .link.danger {
+      color: var(--muted);
+    }
+    .link.danger:hover {
+      color: var(--error);
+    }
+
+    .form {
+      padding-bottom: 4px;
+    }
+    .field {
+      margin-bottom: 10px;
+    }
+    .field label {
+      display: block;
+      font-size: 12px;
+      color: var(--muted);
       margin-bottom: 4px;
     }
-    .input-field {
+    .input {
       width: 100%;
-      padding: 6px 10px;
-      border: 1px solid #cbd5e1;
+      height: 32px;
+      padding: 0 10px;
+      border: 1px solid var(--field-border);
       border-radius: 6px;
-      font-size: 12px;
-      color: #1e293b;
-      background: #f8fafc;
-      box-sizing: border-box;
-      transition: border-color 0.15s, background-color 0.15s;
+      background: var(--field);
+      color: var(--text);
+      font: inherit;
+      font-size: 13px;
+      user-select: text;
     }
-    .input-field:focus {
+    .input::placeholder {
+      color: var(--faint);
+    }
+    .input:focus {
       outline: none;
-      border-color: #7c246c;
-      background: #ffffff;
+      border-color: var(--accent);
     }
     .password-wrapper {
       position: relative;
-      display: flex;
-      align-items: center;
     }
-    .password-wrapper input {
-      padding-right: 32px;
+    .password-wrapper .input {
+      padding-right: 34px;
     }
     .eye-btn {
       position: absolute;
-      right: 4px;
+      top: 0;
+      right: 0;
+      width: 32px;
+      height: 32px;
       background: none;
-      border: none;
+      border: 0;
+      color: var(--faint);
       cursor: pointer;
-      padding: 4px;
-      color: #64748b;
       display: flex;
       align-items: center;
       justify-content: center;
-      border-radius: 4px;
     }
     .eye-btn:hover {
-      color: #334155;
+      color: var(--text);
     }
-    .btn-row {
+    .form-actions {
       display: flex;
-      gap: 8px;
-      margin-top: 10px;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 10px;
     }
-    .btn-secondary {
-      background: #f1f5f9;
-      color: #475569;
-      border: 1px solid #cbd5e1;
+    .btn-outline {
+      height: 30px;
+      padding: 0 16px;
+      border: 1px solid var(--accent);
       border-radius: 6px;
-      padding: 7px 10px;
-      font-size: 12px;
+      background: transparent;
+      color: var(--accent);
+      font-size: 12.5px;
       font-weight: 600;
       cursor: pointer;
+    }
+    .btn-outline:hover {
+      background: var(--accent-soft);
+    }
+    .form-actions .secondary {
       display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 4px;
-      transition: background-color 0.15s ease, color 0.15s ease;
+      gap: 14px;
     }
-    .btn-secondary:hover {
-      background: #fee2e2;
-      color: #dc2626;
-      border-color: #fca5a5;
+
+    .note {
+      font-size: 11.5px;
+      color: var(--faint);
+      padding-bottom: 12px;
     }
-    .btn-secondary:active {
+
+    .status {
+      font-size: 12px;
+      min-height: 0;
+    }
+    .status:empty {
+      display: none;
+    }
+    .status.ok { color: var(--ok); }
+    .status.warn { color: var(--warn); }
+    .status.error { color: var(--error); }
+    .status.info { color: var(--muted); }
+    #loginStatusMessage {
+      padding-bottom: 10px;
+    }
+
+    /* Primary action */
+    .btn-primary {
+      width: 100%;
+      height: 36px;
+      margin-top: 16px;
+      border: 0;
+      border-radius: 8px;
+      background: var(--accent);
+      color: var(--on-accent);
+      font-size: 13px;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+      cursor: pointer;
+      transition: background-color 0.15s ease;
+    }
+    .btn-primary:hover {
+      background: var(--accent-hover);
+    }
+    .btn-primary:active {
       transform: translateY(1px);
     }
-    .security-badge {
-      display: flex;
-      align-items: center;
-      gap: 5px;
-      font-size: 10px;
-      color: #64748b;
+    #statusMessage {
       margin-top: 8px;
-      padding-top: 8px;
-      border-top: 1px dashed #f1f5f9;
-    }
-    .features {
-      font-size: 11px;
-      color: #475569;
-      line-height: 1.5;
-    }
-    .feature-item {
-      display: flex;
-      gap: 6px;
-      margin-bottom: 5px;
-    }
-    .feature-item:last-child {
-      margin-bottom: 0;
-    }
-    .feature-icon {
-      color: #10b981;
-      font-size: 11px;
-      flex-shrink: 0;
-    }
-    .footer {
       text-align: center;
-      font-size: 10px;
-      color: #94a3b8;
-      margin-top: 10px;
+    }
+
+    .foot {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      margin-top: 12px;
+      font-size: 11.5px;
+      color: var(--faint);
+    }
+    .foot .link {
+      font-size: 11.5px;
+      color: var(--muted);
     }
   </style>
 </head>
 <body>
-  <div class="header">
-    <div class="logo-badge">
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-        <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
-      </svg>
-    </div>
-    <div class="title-area">
-      <h1>驗證碼自動填入</h1>
-      <p id="versionTag">核心版本 v1.3.4 (純本機離線)</p>
-    </div>
-  </div>
-
-  <div class="card">
-    <div class="toggle-row">
-      <span class="toggle-label">自動填入功能</span>
-      <label class="switch">
-        <input type="checkbox" id="autoFillToggle" checked>
-        <span class="slider"></span>
-      </label>
-    </div>
-    <div class="toggle-subrow">
-      <span class="toggle-sublabel">通用網站自動偵測</span>
-      <label class="switch">
-        <input type="checkbox" id="universalToggle" checked>
-        <span class="slider"></span>
-      </label>
-    </div>
-    <div class="stats-row">
-      <span>已累計自動填入</span>
-      <span class="stats-badge" id="statsCount">0 次</span>
-    </div>
-  </div>
-
-  <div class="card">
-    <div class="toggle-row">
+  <header class="head">
+    <svg class="noise" viewBox="0 0 320 70" preserveAspectRatio="none" aria-hidden="true">
+      <path fill="none" stroke="currentColor" stroke-width="1.2" d="M-10 52 C 60 20, 120 70, 190 34 S 300 10, 340 40"/>
+      <path fill="none" stroke="currentColor" stroke-width="1.2" d="M-10 18 C 50 40, 140 4, 210 30 S 290 64, 340 22"/>
+      <path fill="none" stroke="currentColor" stroke-width="1.2" d="M150 70 C 190 40, 240 60, 340 6"/>
+    </svg>
+    <div class="brand">
+      <div class="logo" aria-hidden="true">
+        <span class="glyph-a">a</span><span class="glyph-z">Z</span><i class="strike"></i>
+      </div>
       <div>
-        <span class="toggle-label">校務/eeclass 自動登入</span>
-        <div style="font-size: 10.5px; color: #64748b; margin-top: 1px;">填寫帳密後自動送出登入</div>
-      </div>
-      <label class="switch">
-        <input type="checkbox" id="autoLoginToggle">
-        <span class="slider"></span>
-      </label>
-    </div>
-
-    <div class="input-group">
-      <label class="input-label" for="savedAccount">學號 / 帳號</label>
-      <input type="text" id="savedAccount" class="input-field" placeholder="請輸入學號或校務帳號" autocomplete="off" spellcheck="false">
-    </div>
-
-    <div class="input-group">
-      <label class="input-label" for="savedPassword">校務密碼</label>
-      <div class="password-wrapper">
-        <input type="password" id="savedPassword" class="input-field" placeholder="請輸入校務系統密碼" autocomplete="off" spellcheck="false">
-        <button type="button" class="eye-btn" id="togglePasswordBtn" title="顯示/隱藏密碼">
-          <svg id="eyeIcon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
-            <circle cx="12" cy="12" r="3"></circle>
-          </svg>
-        </button>
+        <h1>驗證碼自動填入</h1>
+        <div class="subtitle">清大校務・eeclass・其他網站</div>
       </div>
     </div>
-
-    <div class="btn-row">
-      <button type="button" class="action-btn" id="saveLoginBtn" style="flex: 1.2;">
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
-          <polyline points="17 21 17 13 7 13 7 21"></polyline>
-          <polyline points="7 3 7 8 15 8"></polyline>
-        </svg>
-        儲存設定
-      </button>
-      <button type="button" class="btn-secondary" id="clearLoginBtn" style="flex: 1;">
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <polyline points="3 6 5 6 21 6"></polyline>
-          <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
-        </svg>
-        清除憑證
-      </button>
+    <div class="count" title="累計自動填入次數">
+      <div class="count-num" id="statsCount">0</div>
+      <div class="count-unit">次</div>
     </div>
+  </header>
 
-    <div class="status-msg" id="loginStatusMessage"></div>
+  <main class="body">
+    <section class="group">
+      <div class="row">
+        <div>
+          <div class="label">自動填入驗證碼</div>
+          <div class="desc">關閉後所有網站都不會自動填入</div>
+        </div>
+        <label class="switch" aria-label="自動填入驗證碼">
+          <input type="checkbox" id="autoFillToggle" checked>
+          <span class="slider"></span>
+        </label>
+      </div>
+      <div class="row">
+        <div class="label">其他網站也自動填入</div>
+        <label class="switch" aria-label="其他網站也自動填入">
+          <input type="checkbox" id="universalToggle" checked>
+          <span class="slider"></span>
+        </label>
+      </div>
+    </section>
 
-    <div class="security-badge">
-      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-        <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
-        <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
-      </svg>
-      <span>憑證僅加密保存在本機 Chrome 沙盒，絕不上傳雲端或 Git</span>
-    </div>
-  </div>
+    <section class="group">
+      <div class="row">
+        <div>
+          <div class="label">校務 / eeclass 自動登入</div>
+          <div class="desc">填好帳密與驗證碼後自動送出</div>
+        </div>
+        <label class="switch" aria-label="校務 / eeclass 自動登入">
+          <input type="checkbox" id="autoLoginToggle">
+          <span class="slider"></span>
+        </label>
+      </div>
 
-  <div class="card">
-    <button class="action-btn" id="forceRecognizeBtn">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <circle cx="11" cy="11" r="8"></circle>
-        <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-      </svg>
-      強制辨識當前頁面驗證碼
-    </button>
-    <button class="action-btn" id="restartOcrBtn" style="margin-top: 8px; background: #f1f5f9; color: #334155; border: 1px solid #cbd5e1;">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <polyline points="23 4 23 10 17 10"></polyline>
-        <polyline points="1 20 1 14 7 14"></polyline>
-        <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
-      </svg>
-      重新載入 OCR 引擎核心
-    </button>
-    <div class="status-msg" id="statusMessage"></div>
-  </div>
+      <div id="loginDetails" hidden>
+        <div class="saved" id="savedSummary" hidden>
+          <span>已儲存<span class="saved-account" id="savedAccountLabel"></span></span>
+          <button type="button" class="link" id="editLoginBtn">編輯</button>
+        </div>
 
-  <div class="card features">
-    <div class="feature-item">
-      <span class="feature-icon">✔</span>
-      <div><b>雙軌神經網路</b>：清大校務/OAuth 使用專屬模型；其餘網站自動切換通用 OCR。</div>
-    </div>
-    <div class="feature-item">
-      <span class="feature-icon">✔</span>
-      <div><b>無脫節保證</b>：優先 DOM 繪製擷取，防二次連線 Session 失效。</div>
-    </div>
-    <div class="feature-item">
-      <span class="feature-icon">✔</span>
-      <div><b>100% 離線隱私</b>：本機神經網路本地運算，不傳送任何畫面或數據。</div>
-    </div>
-  </div>
+        <div class="form" id="loginForm" hidden>
+          <div class="field">
+            <label for="savedAccount">學號</label>
+            <input type="text" id="savedAccount" class="input" placeholder="例如 112062001" autocomplete="off" spellcheck="false">
+          </div>
+          <div class="field">
+            <label for="savedPassword">校務系統密碼</label>
+            <div class="password-wrapper">
+              <input type="password" id="savedPassword" class="input" autocomplete="off" spellcheck="false">
+              <button type="button" class="eye-btn" id="togglePasswordBtn" title="顯示密碼" aria-label="顯示密碼">
+                <svg id="eyeIcon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                  <circle cx="12" cy="12" r="3"></circle>
+                </svg>
+              </button>
+            </div>
+          </div>
+          <div class="form-actions">
+            <button type="button" class="btn-outline" id="saveLoginBtn">儲存</button>
+            <div class="secondary">
+              <button type="button" class="link" id="cancelEditBtn" hidden>取消</button>
+              <button type="button" class="link danger" id="clearLoginBtn">清除帳密</button>
+            </div>
+          </div>
+        </div>
 
-  <div class="footer">
-    國立清華大學專用 + 全網通用支援
-  </div>
+        <div class="status" id="loginStatusMessage" role="status"></div>
+        <div class="note">帳密只存在這台電腦的瀏覽器裡，不會上傳。</div>
+      </div>
+    </section>
+
+    <button type="button" class="btn-primary" id="forceRecognizeBtn">重新辨識這個頁面</button>
+    <div class="status" id="statusMessage" role="status"></div>
+
+    <footer class="foot">
+      <span id="versionTag">v1.3.5</span>
+      <button type="button" class="link" id="restartOcrBtn">辨識沒反應？重新啟動</button>
+    </footer>
+  </main>
 
   <script src="popup.js"></script>
 </body>

@@ -1,5 +1,5 @@
 /**
- * Universal Captcha OCR Case-Sensitivity & Real Case Test Suite (v1.3.4)
+ * Universal Captcha OCR Case-Sensitivity & Real Case Test Suite (v1.3.5)
  * Validates fixes for:
  * 1. Model native pure-grayscale beam search inference with Color-Aware Filtering
  * 2. Intelligent separation of dark blue characters vs light blue interference lines
@@ -47,8 +47,8 @@ test('Charset & Token Mapping Integrity', async (t) => {
     assert.strictEqual(VALID_CLASSES[0], 0, 'First class must be CTC blank 0');
   });
 
-  await t.test('EXTENSION_VERSION is bumped to 1.3.4', () => {
-    assert.strictEqual(EXTENSION_VERSION, '1.3.4', 'EXTENSION_VERSION must be 1.3.4');
+  await t.test('EXTENSION_VERSION is bumped to 1.3.5', () => {
+    assert.strictEqual(EXTENSION_VERSION, '1.3.5', 'EXTENSION_VERSION must be 1.3.5');
   });
 });
 
