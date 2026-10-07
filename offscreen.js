@@ -653,7 +653,7 @@ class UniversalOcrEngine {
   }
 }
 
-const EXTENSION_VERSION = '1.3.4';
+const EXTENSION_VERSION = '1.3.5';
 const engine = new UniversalOcrEngine();
 
 // Export for automated testing in Node.js

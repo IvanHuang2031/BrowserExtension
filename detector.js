@@ -12,7 +12,7 @@
     return;
   }
 
-  const DETECTOR_VERSION = '1.3.4';
+  const DETECTOR_VERSION = '1.3.5';
   const processedInputs = new WeakSet();
   const processedImages = new WeakSet();
   let isScanning = false;
